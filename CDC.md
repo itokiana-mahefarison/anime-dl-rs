@@ -1,7 +1,7 @@
 # Technical Specification (CDC) - anime-dl-rs
 
 ## 1. Introduction
-`anime-dl-rs` is a high-performance, asynchronous Rust command-line and terminal user interface (TUI) application designed to search, parse, and download anime episodes from **voir-anime.to**, built following Test-Driven Development (TDD).
+`anime-dl-rs` is a high-performance, asynchronous Rust command-line and terminal user interface (TUI) application designed to search, parse, and download anime episodes from **voir-anime.to**, integrating **yt-dlp** for universal media extraction and downloading across all player types.
 
 ---
 
@@ -11,8 +11,8 @@ The project follows a modular Rust architecture:
 - `main.rs`: Entry point, argument parsing (`clap`), and initialization (TUI or CLI mode).
 - `app.rs`: Application state management for the TUI (`ratatui`).
 - `ui.rs`: Rendering logic for views (Search, Episode list, Settings modal, Download progress).
-- `scraper.rs`: HTTP client (`reqwest`), HTML parsing (`scraper`), handling search queries, language filtering (VOSTFR/VF), player iframe extraction, and stream resolution (`resolve_video_url`).
-- `downloader.rs`: Smart downloader supporting HTTP `Range` requests for resumable downloads, concurrent downloads via `tokio`, and `indicatif` progress bars.
+- `scraper.rs`: HTTP client (`reqwest`), HTML parsing (`scraper`), handling search queries, language filtering (VOSTFR/VF), player iframe extraction, and stream resolution.
+- `downloader.rs`: Smart downloader supporting **yt-dlp** integration for universal player support (VOE, MOON, Streamtape, myTV) alongside HTTP `Range` resumable downloads and `indicatif` progress bars.
 - `config.rs`: Persistent configuration (`~/.config/anime-dl/config.json`) for language preferences and prioritized player lists.
 
 ---
