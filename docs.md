@@ -1,6 +1,6 @@
 # User Documentation - anime-dl-rs
 
-Welcome to the user guide for **anime-dl-rs**, an interactive TUI and CLI anime downloader optimized for **voir-anime.to**.
+Welcome to the user guide for **anime-dl-rs**, an interactive TUI and CLI anime downloader optimized for **voir-anime.to**, featuring universal **yt-dlp** integration.
 
 ---
 
@@ -8,6 +8,8 @@ Welcome to the user guide for **anime-dl-rs**, an interactive TUI and CLI anime 
 
 ### Prerequisites
 - **Rust & Cargo:** Edition 2021 or later (`rustup`).
+- **yt-dlp:** Required for universal downloading from embed players (VOE, Streamtape, MOON, myTV, etc.). Ensure `yt-dlp` is installed and available in your PATH.
+- **FFmpeg:** Recommended for merging video/audio streams.
 - **Internet Connection:** Required for live scraping and integration tests.
 
 ### Building from Source
@@ -24,12 +26,6 @@ To run the test suite (unit and live integration tests):
 ```bash
 cargo test -- --nocapture
 ```
-
-The test suite covers:
-1. Configuration loading and serialization.
-2. HTML search parsing and robust episode number extraction.
-3. TUI state machine and settings modal navigation.
-4. Live integration tests verifying search queries, episode listings, player iframe extraction, and direct video stream resolution against `voir-anime.to`.
 
 ---
 
