@@ -22,53 +22,116 @@ struct Args {
 
     #[arg(short, long, default_value = "./downloads")]
     output: String,
+
+    #[arg(long, help = "Run non-interactive CLI batch download for all episodes")]
+    cli: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    let scraper = Scraper::new();
 
-    // If direct URL is provided via CLI
-    if let Some(url) = args.url {
-        println!("Starting direct download mode for URL: {}", url);
-        let scraper = Scraper::new();
-        let downloader = Downloader::new(args.output);
+    // If --cli flag is passed, run non-interactive batch download mode
+    if args.cli {
+        if let Some(url) = args.url {
+            println!("Starting non-interactive CLI batch download mode for URL: {}", url);
+            let downloader = Downloader::new(args.output);
 
-        println!("Fetching episodes...");
-        let episodes = scraper.get_episodes(&url).await?;
-        println!("Found {} episodes.", episodes.len());
+            println!("Fetching episodes...");
+            let episodes = scraper.get_episodes(&url).await?;
+            println!("Found {} episodes. Downloading in batches of 3 with player fallback...", episodes.len());
 
-        for ep in episodes {
-            println!("Processing Episode {}: {}", ep.number, ep.title);
-            match scraper.get_player_iframe(&ep.url, &["Stape".to_string(), "myTV".to_string(), "MOON".to_string(), "VOE".to_string()]).await {
-                Ok(iframe) => {
-                    println!("Found iframe: {}", iframe);
-                    match scraper.resolve_video_url(&iframe).await {
-                        Ok(video_url) => {
-                            println!("Resolved direct video URL: {}", video_url);
-                            let pb = ProgressBar::new(0);
-                            if let Err(e) = downloader.download_episode(&video_url, ep.number, pb).await {
-                                eprintln!("Failed to download episode {}: {}", ep.number, e);
+            let config = anime_dl_rs::config::Config::load();
+            let preferred_players = config.preferred_players;
+            println!("Loaded preferred players: {:?}", preferred_players);
+
+            let chunks: Vec<_> = episodes.chunks(3).collect();
+            let total_chunks = chunks.len();
+
+            for (chunk_idx, chunk) in chunks.iter().enumerate() {
+                println!("\n=== Starting batch {}/{} (3 episodes max in parallel) ===", chunk_idx + 1, total_chunks);
+                let mut set = tokio::task::JoinSet::new();
+
+                for ep in *chunk {
+                    let scraper = scraper.clone();
+                    let downloader = downloader.clone();
+                    let players = preferred_players.clone();
+                    let ep = (*ep).clone();
+
+                    set.spawn(async move {
+                        println!("▶ Processing Episode {}: {}", ep.number, ep.title);
+                        let pb = ProgressBar::new(0);
+                        let mut downloaded = false;
+
+                        for player in &players {
+                            let iframe = match scraper.get_player_iframe_for_player(&ep.url, player).await {
+                                Ok(iframe) => iframe,
+                                Err(_) => continue,
+                            };
+
+                            let target_url = match scraper.resolve_video_url(&iframe).await {
+                                Ok(vid_url) => vid_url,
+                                Err(_) => iframe,
+                            };
+
+                            let (_tx, rx) = tokio::sync::watch::channel(());
+                            match downloader.download_episode(&target_url, ep.number, pb.clone(), rx).await {
+                                Ok(_) => {
+                                    downloaded = true;
+                                    break;
+                                }
+                                Err(e) => {
+                                    eprintln!("⚠️ Player {} failed for Episode {}: {}. Trying next player...", player, ep.number, e);
+                                }
                             }
                         }
-                        Err(e) => eprintln!("Failed to resolve video stream: {}", e),
+
+                        if !downloaded {
+                            eprintln!("❌ All players failed for Episode {} ({}).", ep.number, ep.title);
+                        }
+                    });
+                }
+
+                while let Some(res) = set.join_next().await {
+                    if let Err(e) = res {
+                        eprintln!("Task error in batch: {}", e);
                     }
                 }
-                Err(e) => eprintln!("Failed to find player iframe: {}", e),
+                println!("=== Batch {} completed ===", chunk_idx + 1);
             }
+
+            return Ok(());
+        } else {
+            eprintln!("Error: --cli requires --url \"<url>\"");
+            return Ok(());
         }
-        return Ok(());
     }
 
-    // Otherwise, launch interactive TUI mode
+    let mut app = App::new();
+    app.config.output_dir = args.output;
+
+    // If direct URL is provided without --cli, fetch episodes and open TUI directly in Episodes view
+    if let Some(url) = args.url {
+        println!("Fetching episodes from direct URL for TUI mode...");
+        match scraper.get_episodes(&url).await {
+            Ok(eps) => {
+                app.episodes = eps;
+                app.current_view = ActiveView::Episodes;
+                app.status_message = format!("Loaded {} episodes from URL. Press Enter to download.", app.episodes.len());
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch episodes from URL: {}. Starting standard TUI search...", e);
+            }
+        }
+    }
+
+    // Launch interactive TUI mode
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    let mut app = App::new();
-    let scraper = Scraper::new();
 
     let res = run_tui(&mut terminal, &mut app, &scraper).await;
 
@@ -132,9 +195,6 @@ async fn run_tui<B: ratatui::backend::Backend>(
                         _ => {}
                     },
                     ActiveView::Search => match key.code {
-                        KeyCode::Char('s') => {
-                            app.toggle_settings();
-                        }
                         KeyCode::Char(c) => {
                             app.search_query.push(c);
                         }
@@ -142,11 +202,43 @@ async fn run_tui<B: ratatui::backend::Backend>(
                             app.search_query.pop();
                         }
                         KeyCode::Enter => {
-                            if !app.search_query.is_empty() {
-                                app.status_message = format!("Searching for '{}'...", app.search_query);
-                                if let Ok(results) = scraper.search(&app.search_query).await {
+                            let query = app.search_query.trim().to_string();
+                            if query == "/s" || query == "/settings" {
+                                app.toggle_settings();
+                                app.search_query.clear();
+                            } else if query.starts_with("http://") || query.starts_with("https://") || query.contains("voir-anime.to") {
+                                app.status_message = format!("Fetching episodes from URL '{}'...", query);
+                                match scraper.get_episodes(&query).await {
+                                    Ok(eps) => {
+                                        app.episodes = eps;
+                                        app.selected_episode_index = 0;
+                                        app.current_view = ActiveView::Episodes;
+                                        app.status_message = format!("Loaded {} episodes from URL.", app.episodes.len());
+                                    }
+                                    Err(_) => {
+                                        app.status_message = "Failed to fetch episodes from URL.".to_string();
+                                    }
+                                }
+                            } else if !app.search_results.is_empty() {
+                                let anime = app.search_results[app.selected_anime_index].clone();
+                                app.status_message = format!("Fetching episodes for {}...", anime.title);
+                                match scraper.get_episodes(&anime.url).await {
+                                    Ok(eps) => {
+                                        app.episodes = eps;
+                                        app.selected_episode_index = 0;
+                                        app.current_view = ActiveView::Episodes;
+                                        app.status_message = format!("Loaded {} episodes.", app.episodes.len());
+                                    }
+                                    Err(_) => {
+                                        app.status_message = "Failed to fetch episodes.".to_string();
+                                    }
+                                }
+                            } else if !query.is_empty() {
+                                app.status_message = format!("Searching for '{}'...", query);
+                                if let Ok(results) = scraper.search(&query).await {
                                     app.search_results = results;
-                                    app.status_message = format!("Found {} results.", app.search_results.len());
+                                    app.selected_anime_index = 0;
+                                    app.status_message = format!("Found {} results. Use Up/Down and Enter to select.", app.search_results.len());
                                 } else {
                                     app.status_message = "Search failed.".to_string();
                                 }
@@ -168,8 +260,80 @@ async fn run_tui<B: ratatui::backend::Backend>(
                         _ => {}
                     },
                     ActiveView::AnimeList | ActiveView::Episodes => {
-                        if key.code == KeyCode::Esc {
-                            app.current_view = ActiveView::Search;
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.current_view = ActiveView::Search;
+                            }
+                            KeyCode::Char('c') | KeyCode::Char('x') => {
+                                if app.is_downloading {
+                                    if let Some(tx) = app.download_cancel_tx.take() {
+                                        let _ = tx.send(());
+                                    }
+                                    app.is_downloading = false;
+                                    app.status_message = "Download cancelled by user.".to_string();
+                                }
+                            }
+                            KeyCode::Up => {
+                                if app.selected_episode_index > 0 {
+                                    app.selected_episode_index -= 1;
+                                }
+                            }
+                            KeyCode::Down => {
+                                if !app.episodes.is_empty() && app.selected_episode_index < app.episodes.len() - 1 {
+                                    app.selected_episode_index += 1;
+                                }
+                            }
+                            KeyCode::Enter => {
+                                if !app.episodes.is_empty() {
+                                    if let Some(tx) = app.download_cancel_tx.take() {
+                                        let _ = tx.send(());
+                                    }
+                                    let (tx, rx) = tokio::sync::watch::channel(());
+                                    app.download_cancel_tx = Some(tx);
+                                    app.is_downloading = true;
+
+                                    let ep = app.episodes[app.selected_episode_index].clone();
+                                    app.status_message = format!("Downloading Episode {}: {}...", ep.number, ep.title);
+
+                                    let scraper = scraper.clone();
+                                    let downloader = Downloader::new(app.config.output_dir.clone());
+                                    let players = app.config.preferred_players.clone();
+                                    let cancel_rx = rx;
+
+                                    tokio::spawn(async move {
+                                        let pb = ProgressBar::hidden();
+                                        let mut downloaded = false;
+                                        for player in &players {
+                                            let iframe = match scraper.get_player_iframe_for_player(&ep.url, player).await {
+                                                Ok(iframe) => iframe,
+                                                Err(_) => continue,
+                                            };
+                                            let target_url = match scraper.resolve_video_url(&iframe).await {
+                                                Ok(vid_url) => vid_url,
+                                                Err(_) => iframe,
+                                            };
+                                            match downloader.download_episode(&target_url, ep.number, pb.clone(), cancel_rx.clone()).await {
+                                                Ok(_) => {
+                                                    downloaded = true;
+                                                    break;
+                                                }
+                                                Err(e) => {
+                                                    if e.to_string().contains("cancelled") {
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if downloaded {
+                                            println!("✅ Episode {} downloaded successfully!", ep.number);
+                                        } else {
+                                            println!("❌ Download stopped or failed for Episode {}.", ep.number);
+                                        }
+                                    });
+                                    app.status_message = format!("Started background download for Episode {}. Press 'c' to cancel.", ep.number);
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }

@@ -21,6 +21,11 @@ pub struct App {
     pub status_message: String,
     pub is_loading: bool,
     pub settings_cursor: usize,
+    pub download_cancel_tx: Option<tokio::sync::watch::Sender<()>>,
+    pub is_downloading: bool,
+    pub download_progress: Option<f64>,
+    pub download_status: Option<String>,
+    pub download_title: Option<String>,
 }
 
 impl App {
@@ -38,6 +43,11 @@ impl App {
             status_message: "Type your search query and press Enter.".to_string(),
             is_loading: false,
             settings_cursor: 0,
+            download_cancel_tx: None,
+            is_downloading: false,
+            download_progress: None,
+            download_status: None,
+            download_title: None,
         }
     }
 

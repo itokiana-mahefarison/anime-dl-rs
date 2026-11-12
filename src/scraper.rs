@@ -19,6 +19,7 @@ pub struct EpisodeItem {
     pub url: String,
 }
 
+#[derive(Clone)]
 pub struct Scraper {
     client: Client,
 }
@@ -127,34 +128,39 @@ impl Scraper {
     /// Extracts the video iframe URL for an episode, trying players according to preferred order.
     pub async fn get_player_iframe(&self, episode_url: &str, preferred_players: &[String]) -> Result<String, Box<dyn std::error::Error>> {
         for player in preferred_players {
-            let host_param = match player.as_str() {
-                "Stape" => "host=LECTEUR%20Stape",
-                "VOE" => "host=LECTEUR%20VOE",
-                "MOON" => "host=LECTEUR%20MOON",
-                "myTV" => "host=LECTEUR%20myTV",
-                _ => continue,
-            };
-
-            let separator = if episode_url.contains('?') { "&" } else { "?" };
-            let target_url = format!("{}{}{}", episode_url, separator, host_param);
-
-            if let Ok(resp) = self.client.get(&target_url).send().await {
-                if let Ok(text) = resp.text().await {
-                    let document = Html::parse_document(&text);
-                    if let Ok(iframe_sel) = Selector::parse("#chapter-video-frame iframe, iframe") {
-                        if let Some(iframe) = document.select(&iframe_sel).next() {
-                            if let Some(src) = iframe.value().attr("src") {
-                                if !src.is_empty() {
-                                    return Ok(src.to_string());
-                                }
-                            }
-                        }
-                    }
-                }
+            match self.get_player_iframe_for_player(episode_url, player).await {
+                Ok(src) => return Ok(src),
+                Err(_) => continue,
             }
         }
 
         Err("Could not find any working player iframe for this episode.".into())
+    }
+
+    pub async fn get_player_iframe_for_player(&self, episode_url: &str, player: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let host_param = match player {
+            "Stape" => "host=LECTEUR%20Stape",
+            "VOE" => "host=LECTEUR%20VOE",
+            "MOON" => "host=LECTEUR%20MOON",
+            "myTV" => "host=LECTEUR%20myTV",
+            _ => return Err(format!("Unknown player: {}", player).into()),
+        };
+
+        let separator = if episode_url.contains('?') { "&" } else { "?" };
+        let target_url = format!("{}{}{}", episode_url, separator, host_param);
+
+        let resp = self.client.get(&target_url).send().await?.text().await?;
+        let document = Html::parse_document(&resp);
+        if let Ok(iframe_sel) = Selector::parse("#chapter-video-frame iframe, iframe") {
+            if let Some(iframe) = document.select(&iframe_sel).next() {
+                if let Some(src) = iframe.value().attr("src") {
+                    if !src.is_empty() {
+                        return Ok(src.to_string());
+                    }
+                }
+            }
+        }
+        Err(format!("No iframe found for player {}", player).into())
     }
 
     /// Resolves an iframe embed URL into a direct video stream URL (.mp4 or .m3u8) if possible.
@@ -163,6 +169,69 @@ impl Scraper {
             .header("Referer", "https://voir-anime.to/")
             .send().await?.text().await?;
 
+        // 1. Streamtape botlink obfuscation pattern matching Python implementation
+        let re_botlink = regex::Regex::new(r#"document\.getElementById\('botlink'\)\.innerHTML\s*=\s*['"](.*?)['"]\s*\+\s*\(['"]([^'\"]+)['"]\)\.substring\(\s*(\d+)\s*\)"#).unwrap();
+
+        if let Some(caps) = re_botlink.captures(&resp) {
+            let prefix = caps.get(1).map_or("", |m| m.as_str());
+            let token_string = caps.get(2).map_or("", |m| m.as_str());
+            let offset: usize = caps.get(3).map_or("0", |m| m.as_str()).parse().unwrap_or(0);
+
+            if offset < token_string.len() {
+                let real_token = &token_string[offset..];
+                let full_url_path = format!("{}{}", prefix, real_token);
+
+                let full_url = if full_url_path.starts_with("//") {
+                    format!("https:{}", full_url_path)
+                } else if full_url_path.starts_with('/') {
+                    format!("https://streamtape.com{}", full_url_path)
+                } else {
+                    full_url_path
+                };
+
+                let final_stream_url = format!("{}&stream=1", full_url);
+
+                let redirect_client = Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .build()?;
+
+                if let Ok(r) = redirect_client.get(&final_stream_url).send().await {
+                    if let Some(loc) = r.headers().get(reqwest::header::LOCATION) {
+                        if let Ok(loc_str) = loc.to_str() {
+                            let cdn_url = if loc_str.starts_with("//") {
+                                format!("https:{}", loc_str)
+                            } else if loc_str.starts_with('/') {
+                                format!("https://streamtape.com{}", loc_str)
+                            } else {
+                                loc_str.to_string()
+                            };
+                            return Ok(cdn_url);
+                        }
+                    }
+                }
+
+                return Ok(final_stream_url);
+            }
+        }
+
+        // 2. VOE / JWPlayer / VidMoly HLS (.m3u8) or MP4 extraction from script variables (file: "...", src: "...")
+        let re_file = regex::Regex::new(r#"(?:file|src|url)\s*[:=]\s*["'](https?://[^"']+\.(?:m3u8|mp4)[^"']*)["']"#).unwrap();
+        if let Some(caps) = re_file.captures(&resp) {
+            if let Some(url_match) = caps.get(1) {
+                return Ok(url_match.as_str().to_string());
+            }
+        }
+
+        // 3. General search for .m3u8 or .mp4 URLs in script contents
+        let re_media = regex::Regex::new(r#"["'](https?://[^"']+\.(?:m3u8|mp4)[^"']*)["']"#).unwrap();
+        if let Some(caps) = re_media.captures(&resp) {
+            if let Some(url_match) = caps.get(1) {
+                return Ok(url_match.as_str().to_string());
+            }
+        }
+
+        // 4. HTML video source tags
         let document = Html::parse_document(&resp);
         if let Ok(source_sel) = Selector::parse("video source, source") {
             if let Some(source) = document.select(&source_sel).next() {
@@ -176,26 +245,6 @@ impl Scraper {
                         return Ok(final_url);
                     }
                 }
-            }
-        }
-
-        let re_streamtape = regex::Regex::new(r#"id=['"]robotlink['"][^>]*>([^<]+)<"#).unwrap();
-        if let Some(caps) = re_streamtape.captures(&resp) {
-            let path = caps.get(1).map_or("", |m| m.as_str()).trim();
-            if !path.is_empty() {
-                let direct_url = if path.starts_with("http") {
-                    path.to_string()
-                } else {
-                    format!("https:{}", path)
-                };
-                return Ok(direct_url);
-            }
-        }
-
-        let re_media = regex::Regex::new(r#"["'](https?://[^"']+\.(?:mp4|m3u8)[^"']*)["']"#).unwrap();
-        if let Some(caps) = re_media.captures(&resp) {
-            if let Some(url_match) = caps.get(1) {
-                return Ok(url_match.as_str().to_string());
             }
         }
 

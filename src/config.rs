@@ -18,6 +18,7 @@ impl Default for Language {
 pub struct Config {
     pub default_language: Language,
     pub preferred_players: Vec<String>,
+    pub output_dir: String,
 }
 
 impl Default for Config {
@@ -30,6 +31,7 @@ impl Default for Config {
                 "MOON".to_string(),
                 "VOE".to_string(),
             ],
+            output_dir: "./downloads".to_string(),
         }
     }
 }
@@ -83,6 +85,7 @@ mod tests {
         let config = Config {
             default_language: Language::VF,
             preferred_players: vec!["VOE".to_string(), "MOON".to_string()],
+            output_dir: "./downloads".to_string(),
         };
 
         let json = serde_json::to_string(&config).unwrap();
