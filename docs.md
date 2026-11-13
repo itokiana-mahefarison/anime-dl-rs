@@ -6,17 +6,26 @@ Welcome to the user guide for **anime-dl-rs**, an interactive TUI and CLI anime 
 
 ## Getting Started
 
-### Prerequisites
-- **Rust & Cargo:** Edition 2021 or later (`rustup`).
-- **yt-dlp:** Required for universal downloading from embed players (Vidmoly, Uqload, VOE, Streamtape, MOON, myTV, etc.). Ensure `yt-dlp` is installed and available in your PATH.
-- **FFmpeg:** Recommended for merging video/audio streams.
-- **Internet Connection:** Required for live scraping and integration tests.
+### ⚡ Quick Installation (One-Liner)
 
-### Building from Source
+#### Linux & macOS:
 ```bash
-cargo build --release
+curl -fsSL https://raw.githubusercontent.com/itokiana/anime-dl-rs/master/install.sh | bash
 ```
-The compiled binary will be located at `target/release/anime-dl-rs`.
+
+#### Windows (PowerShell):
+```powershell
+irm https://raw.githubusercontent.com/itokiana/anime-dl-rs/master/install.ps1 | iex
+```
+
+#### Cargo:
+```bash
+cargo install --git https://github.com/itokiana/anime-dl-rs.git
+```
+
+---
+
+### Prerequisites & Manual Build
 
 ---
 

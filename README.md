@@ -70,14 +70,33 @@
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites
+### ⚡ 1. One-Liner Instant Installation (No git clone required)
+
+Install and setup `anime-dl-rs` automatically in seconds:
+
+#### Linux & macOS:
+```bash
+curl -fsSL https://raw.githubusercontent.com/itokiana/anime-dl-rs/master/install.sh | bash
+```
+
+#### Windows (PowerShell):
+```powershell
+irm https://raw.githubusercontent.com/itokiana/anime-dl-rs/master/install.ps1 | iex
+```
+
+#### Via Cargo (Cross-Platform):
+```bash
+cargo install --git https://github.com/itokiana/anime-dl-rs.git
+```
+
+---
+
+### 📦 2. Prerequisites & Manual Build
 
 Ensure you have the following tools available in your `PATH`:
 - **Rust toolchain** (1.75+ recommended): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - **yt-dlp**: `sudo apt install yt-dlp` or `pip install yt-dlp`
 - **FFmpeg**: `sudo apt install ffmpeg`
-
-### 2. Build from Source
 
 ```bash
 git clone https://github.com/itokiana/anime-dl-rs.git
@@ -85,7 +104,7 @@ cd anime-dl-rs
 cargo build --release
 ```
 
-The optimized binary will be created at `target/release/anime-dl-rs`.
+The compiled binary will be placed at `target/release/anime-dl-rs`.
 
 ---
 
