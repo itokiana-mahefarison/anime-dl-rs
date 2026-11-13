@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "/home/itokiana/.nvm/versions/node/v20.20.2/bin/chrome-devtools-mcp",
+      "args": [
+        "--no-usage-statistics",
+        "--browserUrl=http://127.0.0.1:9222"
+      ],
+      "env": {
+        "PATH": "/home/itokiana/.nvm/versions/node/v20.20.2/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}

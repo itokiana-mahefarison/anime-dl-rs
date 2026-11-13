@@ -1,37 +1,64 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Gauge, List, ListItem, Paragraph, Tabs},
     Frame,
 };
 
 use crate::app::{ActiveView, App};
 
-pub fn draw(f: &mut Frame, app: &App) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(10),
-            Constraint::Length(3),
-        ])
-        .split(f.size());
+const ASCII_BANNER: &str = r#"
+               _                     _ _                
+  __ _ _ _  (_)_ __  ___ ___ __| | |___ _ _ ___ 
+ / _` | ' \ | | '  \/ -_)___/ _` | |___| '_(_-< 
+ \__,_|_||_||_|_|_|_\___|   \__,_|_|   |_| /__/ 
+"#;
 
-    // Title / Header
-    let provider_name = match app.config.provider {
-        crate::config::ProviderType::VoirAnime => "voir-anime",
-        crate::config::ProviderType::AnimeSama => "anime-sama",
+pub fn draw(f: &mut Frame, app: &App) {
+    let size = f.size();
+
+    // Outer container block with Binsider style border
+    let outer_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::DarkGray))
+        .title(Line::from(vec![
+            Span::raw("─┤ "),
+            Span::styled("anime-dl-rs v0.1.0", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" ├──"),
+        ]))
+        .title_alignment(Alignment::Center);
+
+    let inner_area = outer_block.inner(size);
+    f.render_widget(outer_block, size);
+
+    // Layout inside outer frame: Header (3), Main Body (Min), Optional Download (3), Footer (1)
+    let has_download = app.current_download.is_some();
+    let constraints = if has_download {
+        vec![
+            Constraint::Length(3), // Top header / Tabs
+            Constraint::Min(8),    // Main workspace
+            Constraint::Length(3), // Download Progress Gauge
+            Constraint::Length(1), // Keybindings Footer
+        ]
+    } else {
+        vec![
+            Constraint::Length(3), // Top header / Tabs
+            Constraint::Min(8),    // Main workspace
+            Constraint::Length(1), // Keybindings Footer
+        ]
     };
 
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(" Anime-DL-RS ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::raw(format!("| Provider: [{}] (Ctrl+P to toggle) | 's' for settings", provider_name)),
-    ]))
-    .block(Block::default().borders(Borders::ALL).title("Navigation"));
-    f.render_widget(header, chunks[0]);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(inner_area);
 
-    // Main Content based on View
+    // 1. TOP HEADER & TABS (Binsider Style)
+    draw_header_tabs(f, app, chunks[0]);
+
+    // 2. MAIN BODY
     match app.current_view {
         ActiveView::Search | ActiveView::AnimeList => {
             draw_search_view(f, app, chunks[1]);
@@ -40,37 +67,302 @@ pub fn draw(f: &mut Frame, app: &App) {
             draw_episodes_view(f, app, chunks[1]);
         }
         ActiveView::Settings => {
-            draw_search_view(f, app, chunks[1]);
-            draw_settings_modal(f, app, f.size());
+            draw_settings_view(f, app, chunks[1]);
         }
     }
 
-    // Status / Footer
-    let footer = Paragraph::new(app.status_message.as_str())
-        .block(Block::default().borders(Borders::ALL).title("Status"));
-    f.render_widget(footer, chunks[2]);
+    // 3. DOWNLOAD GAUGE (if active)
+    if has_download {
+        if let Some(ref dl) = app.current_download {
+            draw_download_bar(f, dl, chunks[2]);
+        }
+        draw_footer_keybindings(f, app, chunks[3]);
+    } else {
+        draw_footer_keybindings(f, app, chunks[2]);
+    }
+}
+
+fn draw_header_tabs(f: &mut Frame, app: &App, area: Rect) {
+    let header_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(35), Constraint::Length(38)])
+        .split(area);
+
+    let tab_titles = vec!["[1] Search", "[2] Episodes", "[3] Settings"];
+    let selected_tab = match app.current_view {
+        ActiveView::Search | ActiveView::AnimeList => 0,
+        ActiveView::Episodes => 1,
+        ActiveView::Settings => 2,
+    };
+
+    let tabs = Tabs::new(tab_titles)
+        .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(Color::DarkGray)))
+        .select(selected_tab)
+        .style(Style::default().fg(Color::DarkGray))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED),
+        )
+        .divider(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+    f.render_widget(tabs, header_chunks[0]);
+
+    let provider_name = match app.config.provider {
+        crate::config::ProviderType::VoirAnime => "voir-anime",
+        crate::config::ProviderType::AnimeSama => "anime-sama",
+    };
+    let lang_str = format!("{:?}", app.config.default_language);
+
+    let meta_info = Line::from(vec![
+        Span::styled("● ", Style::default().fg(Color::Green)),
+        Span::styled(provider_name, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+        Span::raw(" │ "),
+        Span::styled(lang_str, Style::default().fg(Color::Yellow)),
+        Span::raw(" │ "),
+        Span::styled("./downloads", Style::default().fg(Color::Gray)),
+    ]);
+
+    let meta_widget = Paragraph::new(meta_info)
+        .alignment(Alignment::Right)
+        .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(Color::DarkGray)));
+    f.render_widget(meta_widget, header_chunks[1]);
 }
 
 fn draw_search_view(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(5)])
+        .constraints([Constraint::Length(3), Constraint::Min(8)])
         .split(area);
 
-    let search_block = Paragraph::new(app.search_query.as_str())
-        .block(Block::default().borders(Borders::ALL).title("Search Anime (Type query & press Enter)"))
-        .style(Style::default().fg(Color::Yellow));
-    f.render_widget(search_block, chunks[0]);
+    let is_search_editing = app.current_view == ActiveView::Search;
+
+    // Search bar with Binsider prompt style
+    let search_border_color = if is_search_editing {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
+
+    let search_title = if is_search_editing {
+        "── Search Anime (Type query & press Enter) ──"
+    } else {
+        "── Search Anime (Press Tab or '/' to Edit) ──"
+    };
+
+    let prompt_prefix = Span::styled(" ❯ ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
+    let query_span = Span::styled(
+        &app.search_query,
+        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+    );
+    let cursor_span = if is_search_editing {
+        Span::styled("█", Style::default().fg(Color::Cyan).add_modifier(Modifier::SLOW_BLINK))
+    } else {
+        Span::raw("")
+    };
+
+    let search_para = Paragraph::new(Line::from(vec![prompt_prefix, query_span, cursor_span]))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(search_border_color))
+                .title(search_title),
+        );
+    f.render_widget(search_para, chunks[0]);
+
+    // If search results are empty, render Binsider style welcome / info card
+    if app.search_results.is_empty() {
+        draw_welcome_card(f, app, chunks[1]);
+    } else {
+        // Split view: Left = Results List (45%), Right = Details Bento Box (55%)
+        let body_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+            .split(chunks[1]);
+
+        let is_list_active = app.current_view == ActiveView::AnimeList;
+        let list_border_color = if is_list_active {
+            Color::Cyan
+        } else {
+            Color::DarkGray
+        };
+
+        let items: Vec<ListItem> = app
+            .search_results
+            .iter()
+            .enumerate()
+            .map(|(i, anime)| {
+                let is_selected = i == app.selected_anime_index;
+                let lang_color = match anime.language {
+                    crate::config::Language::VOSTFR => Color::Cyan,
+                    crate::config::Language::VF => Color::LightMagenta,
+                };
+                let lang_badge = format!("[{:?}]", anime.language);
+
+                let prefix = if is_selected && is_list_active {
+                    "▶ "
+                } else if is_selected {
+                    "▷ "
+                } else {
+                    "  "
+                };
+
+                let line = Line::from(vec![
+                    Span::styled(prefix, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(format!("{:<8} ", lang_badge), Style::default().fg(lang_color)),
+                    Span::raw(&anime.title),
+                ]);
+
+                let style = if is_selected && is_list_active {
+                    Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                } else if is_selected {
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+
+                ListItem::new(line).style(style)
+            })
+            .collect();
+
+        let list_title = format!("── Results ({}) ──", app.search_results.len());
+        let results_list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(list_border_color))
+                    .title(list_title),
+            );
+        f.render_widget(results_list, body_chunks[0]);
+
+        // Right details card
+        draw_anime_preview(f, app, body_chunks[1]);
+    }
+}
+
+fn draw_welcome_card(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(6), // Banner
+            Constraint::Length(8), // Info box
+            Constraint::Min(2),
+        ])
+        .margin(1)
+        .split(area);
+
+    let banner = Paragraph::new(ASCII_BANNER)
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+    f.render_widget(banner, chunks[0]);
+
+    // Centered metadata box
+    let info_box = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Percentage(50),
+            Constraint::Percentage(25),
+        ])
+        .split(chunks[1]);
+
+    let provider_name = match app.config.provider {
+        crate::config::ProviderType::VoirAnime => "voir-anime.to (WordPress)",
+        crate::config::ProviderType::AnimeSama => "anime-sama.to (Single-Page SPA)",
+    };
+
+    let text = vec![
+        Line::from(vec![
+            Span::styled("Provider   : ", Style::default().fg(Color::Cyan)),
+            Span::styled(provider_name, Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled("Language   : ", Style::default().fg(Color::Cyan)),
+            Span::styled(format!("{:?}", app.config.default_language), Style::default().fg(Color::Yellow)),
+        ]),
+        Line::from(vec![
+            Span::styled("Players    : ", Style::default().fg(Color::Cyan)),
+            Span::styled(app.config.preferred_players.join(" ➔ "), Style::default().fg(Color::LightMagenta)),
+        ]),
+        Line::from(vec![
+            Span::styled("Backend    : ", Style::default().fg(Color::Cyan)),
+            Span::styled("yt-dlp (Universal Stream Extraction)", Style::default().fg(Color::Green)),
+        ]),
+    ];
+
+    let info_block = Paragraph::new(text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title("── Configuration ──")
+                .title_alignment(Alignment::Center),
+        );
+    f.render_widget(info_block, info_box[1]);
+}
+
+fn draw_anime_preview(f: &mut Frame, app: &App, area: Rect) {
+    if app.search_results.is_empty() {
+        return;
+    }
+
+    let anime = &app.search_results[app.selected_anime_index];
+
+    let details = vec![
+        Line::from(vec![
+            Span::styled("Title     : ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(&anime.title, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("Language  : ", Style::default().fg(Color::Cyan)),
+            Span::styled(format!("{:?}", anime.language), Style::default().fg(Color::Yellow)),
+        ]),
+        Line::from(vec![
+            Span::styled("Target URL: ", Style::default().fg(Color::Cyan)),
+            Span::styled(&anime.url, Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![
+            Span::styled("Action    : ", Style::default().fg(Color::Cyan)),
+            Span::styled("Press Enter to fetch episodes list", Style::default().fg(Color::Green)),
+        ]),
+    ];
+
+    let preview_box = Paragraph::new(details)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title("── Anime Information ──"),
+        );
+    f.render_widget(preview_box, area);
+}
+
+fn draw_episodes_view(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+        .split(area);
 
     let items: Vec<ListItem> = app
-        .search_results
+        .episodes
         .iter()
         .enumerate()
-        .map(|(i, anime)| {
-            let lang_str = format!("[{:?}]", anime.language);
-            let content = format!("{} {}", lang_str, anime.title);
-            let style = if i == app.selected_anime_index {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+        .map(|(i, ep)| {
+            let is_selected = i == app.selected_episode_index;
+            let prefix = if is_selected { "▶ " } else { "  " };
+
+            let content = Line::from(vec![
+                Span::styled(prefix, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{:02} │ ", ep.number), Style::default().fg(Color::DarkGray)),
+                Span::raw(&ep.title),
+            ]);
+
+            let style = if is_selected {
+                Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -78,80 +370,198 @@ fn draw_search_view(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
+    let list_title = format!("── Episodes ({}) ──", app.episodes.len());
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Results (Select & press Enter)"))
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
-    f.render_widget(list, chunks[1]);
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::Green))
+                .title(list_title),
+        );
+    f.render_widget(list, chunks[0]);
+
+    // Right details box
+    if !app.episodes.is_empty() {
+        let ep = &app.episodes[app.selected_episode_index];
+        let ep_details = vec![
+            Line::from(vec![
+                Span::styled("Episode   : ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("#{:02} - {}", ep.number, ep.title), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled("Player    : ", Style::default().fg(Color::Green)),
+                Span::styled(app.config.preferred_players.join(" > "), Style::default().fg(Color::Cyan)),
+            ]),
+            Line::from(vec![
+                Span::styled("File Out  : ", Style::default().fg(Color::Green)),
+                Span::styled(format!("./downloads/episode_{:02}.mp4", ep.number), Style::default().fg(Color::Yellow)),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Instruction: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Press [Enter] to start downloading in background", Style::default().fg(Color::Green)),
+            ]),
+        ];
+
+        let ep_box = Paragraph::new(ep_details)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::DarkGray))
+                    .title("── Episode Details ──"),
+            );
+        f.render_widget(ep_box, chunks[1]);
+    }
 }
 
-fn draw_episodes_view(f: &mut Frame, app: &App, area: Rect) {
-    let items: Vec<ListItem> = app
-        .episodes
-        .iter()
-        .enumerate()
-        .map(|(i, ep)| {
-            let style = if i == app.selected_episode_index {
-                Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-            ListItem::new(ep.title.clone()).style(style)
-        })
-        .collect();
-
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Episodes (Press Enter to Download)"))
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
-    f.render_widget(list, area);
-}
-
-fn draw_settings_modal(f: &mut Frame, app: &App, area: Rect) {
-    let popup_area = centered_rect(60, 60, area);
+fn draw_settings_view(f: &mut Frame, app: &App, area: Rect) {
+    let popup_area = centered_rect(65, 75, area);
     f.render_widget(Clear, popup_area);
-
-    let block = Block::default()
-        .title("Settings - Use Up/Down & Space/Enter")
-        .borders(Borders::ALL)
-        .style(Style::default().bg(Color::DarkGray));
-    f.render_widget(block, popup_area);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
-            Constraint::Min(5),
             Constraint::Length(3),
+            Constraint::Min(6),
         ])
-        .margin(2)
+        .margin(1)
         .split(popup_area);
 
+    let main_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title("── Settings ──")
+        .title_alignment(Alignment::Center);
+    f.render_widget(main_block, popup_area);
+
+    // Provider row
     let provider_name = match app.config.provider {
         crate::config::ProviderType::VoirAnime => "voir-anime",
         crate::config::ProviderType::AnimeSama => "anime-sama",
     };
-    let prov_text = format!("Provider: {} (Ctrl+P to toggle)", provider_name);
-    let prov_para = Paragraph::new(prov_text).block(Block::default().borders(Borders::ALL));
+    let prov_para = Paragraph::new(Line::from(vec![
+        Span::styled("Active Provider: ", Style::default().fg(Color::Cyan)),
+        Span::styled(provider_name, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+        Span::styled(" (Press Ctrl+P to switch)", Style::default().fg(Color::DarkGray)),
+    ]))
+    .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(Color::DarkGray)));
     f.render_widget(prov_para, chunks[0]);
 
+    // Language row
+    let lang_para = Paragraph::new(Line::from(vec![
+        Span::styled("Default Audio  : ", Style::default().fg(Color::Cyan)),
+        Span::styled(format!("{:?}", app.config.default_language), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(" (Press 'l' to toggle VOSTFR / VF)", Style::default().fg(Color::DarkGray)),
+    ]))
+    .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(Color::DarkGray)));
+    f.render_widget(lang_para, chunks[1]);
+
+    // Preferred players list
     let players: Vec<ListItem> = app
         .config
         .preferred_players
         .iter()
         .enumerate()
         .map(|(i, player)| {
-            let prefix = if i == app.settings_cursor { "> [x] " } else { "  [ ] " };
-            let content = format!("{}{}", prefix, player);
-            ListItem::new(content)
+            let is_cursor = i == app.settings_cursor;
+            let prefix = if is_cursor { "▶ [x] " } else { "  [x] " };
+            let line = Line::from(vec![
+                Span::styled(prefix, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{}. {}", i + 1, player), Style::default().fg(Color::White)),
+            ]);
+            let style = if is_cursor {
+                Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            ListItem::new(line).style(style)
         })
         .collect();
 
     let players_list = List::new(players)
-        .block(Block::default().borders(Borders::ALL).title("Preferred Players Priority (Use +/- to reorder)"))
-        .style(Style::default().fg(Color::White));
-    f.render_widget(players_list, chunks[1]);
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title("── Player Priority (Use +/- to reorder) ──"),
+        );
+    f.render_widget(players_list, chunks[2]);
+}
 
-    let footer = Paragraph::new("Press Esc or 's' to close");
-    f.render_widget(footer, chunks[2]);
+fn draw_download_bar(f: &mut Frame, dl: &crate::app::DownloadProgress, area: Rect) {
+    let label = format!("{} ➔ {:.1}% [{}]", dl.title, dl.percent, dl.status);
+    let gauge = Gauge::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::Green))
+                .title("── Download Progress ──"),
+        )
+        .gauge_style(Style::default().fg(Color::Green).bg(Color::DarkGray))
+        .percent(dl.percent.clamp(0.0, 100.0) as u16)
+        .label(label);
+    f.render_widget(gauge, area);
+}
+
+fn draw_footer_keybindings(f: &mut Frame, app: &App, area: Rect) {
+    let pills = match app.current_view {
+        ActiveView::Search => vec![
+            key_pill("Enter", "Search"),
+            key_pill("Tab/Down", "Browse"),
+            key_pill("Ctrl+P", "Provider"),
+            key_pill("Ctrl+S", "Settings"),
+            key_pill("Esc", "Quit"),
+        ],
+        ActiveView::AnimeList => vec![
+            key_pill("Enter", "View Episodes"),
+            key_pill("Up/Down", "Navigate"),
+            key_pill("Tab", "Edit Query"),
+            key_pill("Ctrl+P", "Provider"),
+            key_pill("Ctrl+S", "Settings"),
+            key_pill("Esc", "Back"),
+        ],
+        ActiveView::Episodes => vec![
+            key_pill("Enter", "Download"),
+            key_pill("Up/Down", "Navigate"),
+            key_pill("Ctrl+P", "Provider"),
+            key_pill("Ctrl+S", "Settings"),
+            key_pill("Esc", "Back"),
+        ],
+        ActiveView::Settings => vec![
+            key_pill("Up/Down", "Select"),
+            key_pill("+/-", "Reorder Player"),
+            key_pill("l", "Toggle Lang"),
+            key_pill("Ctrl+S/Esc", "Close"),
+        ],
+    };
+
+    let mut line_spans = Vec::new();
+    line_spans.push(Span::raw(" "));
+    for (i, pill) in pills.into_iter().enumerate() {
+        line_spans.extend(pill);
+        if i < 4 {
+            line_spans.push(Span::raw(" "));
+        }
+    }
+
+    let footer = Paragraph::new(Line::from(line_spans)).alignment(Alignment::Center);
+    f.render_widget(footer, area);
+}
+
+fn key_pill<'a>(key: &'a str, action: &'a str) -> Vec<Span<'a>> {
+    vec![
+        Span::styled("[", Style::default().fg(Color::DarkGray)),
+        Span::styled(key, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(" → ", Style::default().fg(Color::DarkGray)),
+        Span::styled(action, Style::default().fg(Color::White)),
+        Span::styled("]", Style::default().fg(Color::DarkGray)),
+    ]
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
