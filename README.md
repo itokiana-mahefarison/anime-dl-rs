@@ -1,81 +1,202 @@
-# Anime-DL (Rust TUI & CLI)
+<div align="center">
 
-A high-performance, asynchronous anime downloader and TUI client for **voir-anime.to** and **anime-sama.to**, built in Rust with **yt-dlp** backend integration for universal player support.
+```text
+               _                     _ _                
+  __ _ _ _  (_)_ __  ___ ___ __| | |___ _ _ ___ 
+ / _` | ' \ | | '  \/ -_)___/ _` | |___| '_(_-< 
+ \__,_|_||_|_|_|_|_\___|   \__,_|_|   |_| /__/ 
+```
 
----
+# anime-dl-rs
 
-## Features
+### High-performance, asynchronous Anime Downloader & TUI Client for Rust lovers.
 
-- **Multi-Provider Architecture:**
-  - Support for **Voir-Anime** (`voir-anime.to`) and **Anime-Sama** (`anime-sama.to`).
-  - Toggle active provider instantly with `Ctrl+P`.
-- **Dual Search Mode:**
-  - **Global Search:** Search for anime across the active platform, displaying all available language versions (VOSTFR & VF).
-  - **Direct URL Mode:** Provide the direct anime link for instant parsing.
-- **Universal Player & yt-dlp Support:**
-  - Supports embed players (`Vidmoly`, `Uqload`, `Streamtape`, `VOE`, `MOON`, `myTV`) with native integration of **yt-dlp** for robust stream extraction and downloading across third-party hosts.
-- **Non-blocking Interactive TUI:**
-  - Built with `ratatui` and `crossterm`.
-  - Non-blocking background downloads with live progress gauge via Tokio MPSC channels.
-  - Dedicated search input focus and results navigation.
-  - Quick settings modal (`Ctrl+S`) to configure language preference and reorder player priorities (`+/-`).
-- **Smart Downloader & CLI:**
-  - Episode range selection (`--range 1-12`).
-  - Resumable HTTP `Range` downloads with retries.
+[![Rust](https://img.shields.io/badge/Rust-2021%2B-orange.svg?style=flat-square&logo=rust)](https://www.rust-lang.org/)
+[![Tokio](https://img.shields.io/badge/Async-Tokio-blue.svg?style=flat-square)](https://tokio.rs/)
+[![Ratatui](https://img.shields.io/badge/TUI-Ratatui-green.svg?style=flat-square)](https://ratatui.rs/)
+[![Backend](https://img.shields.io/badge/Backend-yt--dlp-red.svg?style=flat-square)](https://github.com/yt-dlp/yt-dlp)
+[![License](https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square)](LICENSE)
 
----
+[**Explore Features**](#-key-features) •
+[**Quick Start**](#-quick-start) •
+[**TUI Controls**](#-interactive-tui) •
+[**CLI Usage**](#-cli-power-mode) •
+[**Architecture**](#-supported-providers--players)
 
-## Prerequisites
-
-- **Rust & Cargo:** Edition 2021 or later (`rustup`).
-- **yt-dlp:** Required for universal downloading from embed players (Vidmoly, Uqload, VOE, Streamtape, MOON, etc.). Ensure `yt-dlp` is installed and available in your PATH.
-- **FFmpeg:** Recommended for merging video/audio streams.
-- **Internet Connection:** Required for live scraping and integration tests.
+</div>
 
 ---
 
-## Installation & Building
+## ⚡ The Modern Terminal Anime Experience
 
-```bash
-cargo build --release
+**`anime-dl-rs`** is built from the ground up for speed, elegance, and resilience. Whether you prefer a blazing-fast command-line tool with episode range filtering or a keyboard-centric, distraction-free **Terminal User Interface (TUI)** inspired by [*binsider*](https://github.com/orhun/binsider), `anime-dl-rs` delivers full control over your anime downloads.
+
+```text
+╭─┤ anime-dl-rs v0.1.0 ├───────────────────────────────────────────────────────╮
+│ [1] Search │ [2] Episodes │ [3] Settings      ● anime-sama │ VOSTFR │ ./downloads│
+│──────────────────────────────────────────────────────────────────────────────│
+│ ╭── Search Anime (Type query & press Enter) ───────────────────────────────╮ │
+│ │ ❯ Solo Leveling█                                                         │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│ ╭── Results (2) ──────────────────╮ ╭── Anime Information ─────────────────╮ │
+│ │ ▶ [VOSTFR] Solo Leveling        │ │ Title     : Solo Leveling (VOSTFR)   │ │
+│ │   [VF]     Solo Leveling        │ │ Language  : VOSTFR                   │ │
+│ │                                 │ │ Target URL: https://anime-sama.to/...│ │
+│ │                                 │ │ Action    : Press Enter for episodes │ │
+│ ╰─────────────────────────────────╯ ╰──────────────────────────────────────╯ │
+│ ╭── Download Progress ─────────────────────────────────────────────────────╮ │
+│ │ Episode 01 ➔ 45.8% [112.4 MB / 245.3 MB (45.8%)]                         │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+│ [Enter → Select]  [Tab → Switch Focus]  [Ctrl+P → Provider]  [Ctrl+S → Set]  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
 
-## Testing
+## ✨ Key Features
 
-To run the complete test suite:
+| Feature | Description |
+| :--- | :--- |
+| **Modular Multi-Provider** | Native support for **Voir-Anime** (`voir-anime.to`) and **Anime-Sama** (`anime-sama.to`). Seamlessly switch between sources on the fly. |
+| **Binsider-Inspired TUI** | Beautiful rounded cards, tabbed views, search prompt cursor, real-time metadata inspector, and status pills. |
+| **Non-blocking Downloads** | Zero GUI freezes. Background tasks stream progress via `tokio::mpsc` channels directly into an in-terminal gauge. |
+| **Universal Video Backend** | Deep integration with **`yt-dlp`** to bypass third-party player protections across all major embed hosts. |
+| **Smart CLI Range Filter** | Download exactly what you want via CLI: full seasons, single episodes, or ranges (`--range 1-12`). |
+| **Resumable HTTP Engine** | Built-in fallback downloader with HTTP `Range` request support, automatic retry loops, and integrity verification. |
+| **Persistent Configuration** | Save your preferred audio language (`VOSTFR` / `VF`) and reorder player priorities (`~/.config/anime-dl/config.json`). |
+
+---
+
+## 🚀 Quick Start
+
+### 1. Prerequisites
+
+Ensure you have the following tools available in your `PATH`:
+- **Rust toolchain** (1.75+ recommended): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- **yt-dlp**: `sudo apt install yt-dlp` or `pip install yt-dlp`
+- **FFmpeg**: `sudo apt install ffmpeg`
+
+### 2. Build from Source
+
+```bash
+git clone https://github.com/itokiana/anime-dl-rs.git
+cd anime-dl-rs
+cargo build --release
+```
+
+The optimized binary will be created at `target/release/anime-dl-rs`.
+
+---
+
+## 🖥️ Interactive TUI
+
+Launch the full interactive experience with no arguments:
+
+```bash
+cargo run --release
+```
+
+### Keyboard Cheat Sheet
+
+| Key | Context | Action |
+| :--- | :--- | :--- |
+| `Enter` | **Search** | Perform search query & switch to results |
+| `Tab` / `Down` | **Search** | Transfer focus to results list |
+| `Tab` / `/` | **Results** | Return focus to search bar to edit query |
+| `Up` / `Down` | **Results / Episodes** | Navigate item list |
+| `Enter` | **Results** | Fetch and open episode list |
+| `Enter` | **Episodes** | Trigger non-blocking background download |
+| `1` / `2` / `3` | **Global** | Jump directly between Tabs (`Search`, `Episodes`, `Settings`) |
+| `Ctrl + P` | **Global** | Toggle provider (**Voir-Anime** ↔ **Anime-Sama**) |
+| `Ctrl + S` | **Global** | Toggle settings modal |
+| `+` / `-` | **Settings** | Reorder video player priorities |
+| `l` | **Settings** | Toggle default audio language (`VOSTFR` ↔ `VF`) |
+| `Esc` / `q` | **Global** | Go back / Exit application |
+
+---
+
+## ⚡ CLI Power Mode
+
+Prefer scriptable or headless downloads? Use CLI direct download mode:
+
+### Auto-Detected Provider URL
+`anime-dl-rs` inspects the URL domain and automatically selects the matching engine:
+
+```bash
+# Download from Voir-Anime
+cargo run --release -- --url "https://voir-anime.to/anime/mission-yozakura-family-2/"
+
+# Download from Anime-Sama
+cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vostfr/"
+```
+
+### Episode Range Filtering (`--range`)
+Download specific parts of a series without manual intervention:
+
+```bash
+# Specific episode range (episodes 1 to 12)
+cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vostfr/" --range 1-12
+
+# Single episode (episode 5)
+cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vostfr/" --range 5
+
+# Open-ended range (from episode 10 to the end)
+cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vostfr/" --range 10-
+
+# Specify custom output folder
+cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vostfr/" --output "/mnt/media/anime"
+```
+
+---
+
+## 🌐 Supported Providers & Players
+
+### Providers
+- **Voir-Anime** (`voir-anime.to`) — Multi-page WordPress / wp-manga scraper with automatic language variant detection.
+- **Anime-Sama** (`anime-sama.to`) — Single-Page season scraper with direct player embed extraction.
+
+### Video Players & Embeds
+`anime-dl-rs` prioritizes players based on your configuration and resolves them through native `yt-dlp` integration:
+- 🟢 **Vidmoly / Ansembed**
+- 🟢 **VOE / VOEmbed**
+- 🟢 **Uqload**
+- 🟢 **Streamtape**
+- 🟢 **MOON / myTV / Sendvid / Sibnet**
+
+---
+
+## ⚙️ Configuration
+
+Your preferences are persistently saved in standard JSON at:
+`~/.config/anime-dl/config.json`
+
+```json
+{
+  "default_language": "VOSTFR",
+  "provider": "AnimeSama",
+  "preferred_players": [
+    "Vidmoly",
+    "VOE",
+    "Uqload",
+    "Stape",
+    "myTV"
+  ]
+}
+```
+
+---
+
+## 🧪 Testing
+
+The repository maintains an automated test suite combining unit tests and live integration scraping:
+
 ```bash
 cargo test -- --nocapture
 ```
 
 ---
 
-## Usage
+## 📄 License
 
-### 1. Interactive TUI Mode
-```bash
-cargo run --release
-```
-
-- **Search:** Type your query and press `Enter`.
-- **Navigation:** Press `Tab` or `Down` to browse results. Press `Tab` or `/` to return to the search query.
-- **Episodes:** Press `Enter` on an anime to view episodes. Press `Enter` on an episode to start downloading in the background.
-- **Provider:** Press `Ctrl+P` to switch between `voir-anime` and `anime-sama`.
-- **Settings:** Press `Ctrl+S` to open the configuration modal (`l` for language, `+`/`-` to reorder players).
-- **Quit / Back:** Press `Esc`.
-
-### 2. CLI Direct Download Mode
-```bash
-# Download all episodes
-cargo run --release -- --url "https://voir-anime.to/anime/mission-yozakura-family-2/" --output "./downloads"
-
-# Download a range of episodes (e.g. episodes 1 to 5)
-cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vostfr/" --output "./downloads" --range 1-5
-```
-
----
-
-## License
-
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
