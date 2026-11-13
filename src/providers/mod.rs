@@ -40,28 +40,28 @@ impl ProviderEnum {
         }
     }
 
-    pub async fn search(&self, query: &str) -> Result<Vec<AnimeItem>, Box<dyn std::error::Error>> {
+    pub async fn search(&self, query: &str) -> Result<Vec<AnimeItem>, Box<dyn std::error::Error + Send + Sync>> {
         match self {
             ProviderEnum::VoirAnime(p) => p.search(query).await,
             ProviderEnum::AnimeSama(p) => p.search(query).await,
         }
     }
 
-    pub async fn get_episodes(&self, anime_url: &str) -> Result<Vec<EpisodeItem>, Box<dyn std::error::Error>> {
+    pub async fn get_episodes(&self, anime_url: &str) -> Result<Vec<EpisodeItem>, Box<dyn std::error::Error + Send + Sync>> {
         match self {
             ProviderEnum::VoirAnime(p) => p.get_episodes(anime_url).await,
             ProviderEnum::AnimeSama(p) => p.get_episodes(anime_url).await,
         }
     }
 
-    pub async fn get_player_iframe(&self, episode_url: &str, preferred_players: &[String]) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn get_player_iframe(&self, episode_url: &str, preferred_players: &[String]) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         match self {
             ProviderEnum::VoirAnime(p) => p.get_player_iframe(episode_url, preferred_players).await,
             ProviderEnum::AnimeSama(p) => p.get_player_iframe(episode_url, preferred_players).await,
         }
     }
 
-    pub async fn resolve_video_url(&self, iframe_url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn resolve_video_url(&self, iframe_url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         match self {
             ProviderEnum::VoirAnime(p) => p.resolve_video_url(iframe_url).await,
             ProviderEnum::AnimeSama(p) => p.resolve_video_url(iframe_url).await,

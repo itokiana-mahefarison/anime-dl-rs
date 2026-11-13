@@ -101,18 +101,18 @@ impl VoirAnime {
         digits.last().copied()
     }
 
-    pub async fn search(&self, query: &str) -> Result<Vec<AnimeItem>, Box<dyn std::error::Error>> {
+    pub async fn search(&self, query: &str) -> Result<Vec<AnimeItem>, Box<dyn std::error::Error + Send + Sync>> {
         let search_url = format!("https://voir-anime.to/?s={}&post_type=wp-manga", urlencoding::encode(query));
         let resp = self.client.get(&search_url).send().await?.text().await?;
         Ok(self.parse_search_html(&resp))
     }
 
-    pub async fn get_episodes(&self, anime_url: &str) -> Result<Vec<EpisodeItem>, Box<dyn std::error::Error>> {
+    pub async fn get_episodes(&self, anime_url: &str) -> Result<Vec<EpisodeItem>, Box<dyn std::error::Error + Send + Sync>> {
         let resp = self.client.get(anime_url).send().await?.text().await?;
         Ok(self.parse_episodes_html(&resp))
     }
 
-    pub async fn get_player_iframe(&self, episode_url: &str, preferred_players: &[String]) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn get_player_iframe(&self, episode_url: &str, preferred_players: &[String]) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         for player in preferred_players {
             let host_param = match player.as_str() {
                 "Stape" => "host=LECTEUR%20Stape",
@@ -144,7 +144,7 @@ impl VoirAnime {
         Err("Could not find any working player iframe for this episode.".into())
     }
 
-    pub async fn resolve_video_url(&self, iframe_url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn resolve_video_url(&self, iframe_url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let resp = self.client.get(iframe_url)
             .header("Referer", "https://voir-anime.to/")
             .send().await?.text().await?;
