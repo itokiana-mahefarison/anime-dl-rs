@@ -9,6 +9,18 @@ pub enum ActiveView {
     Settings,
 }
 
+#[derive(Debug, Clone)]
+pub struct DownloadProgress {
+    pub ep_number: usize,
+    pub title: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub percent: f64,
+    pub status: String,
+    pub is_finished: bool,
+    pub error: Option<String>,
+}
+
 pub struct App {
     pub current_view: ActiveView,
     pub previous_view: ActiveView,
@@ -21,6 +33,7 @@ pub struct App {
     pub status_message: String,
     pub is_loading: bool,
     pub settings_cursor: usize,
+    pub current_download: Option<DownloadProgress>,
 }
 
 impl App {
@@ -35,9 +48,10 @@ impl App {
             selected_anime_index: 0,
             episodes: Vec::new(),
             selected_episode_index: 0,
-            status_message: "Type your search query and press Enter. (Press Ctrl+P to toggle Provider)".to_string(),
+            status_message: "Type your search query and press Enter. (Ctrl+P: Provider | Ctrl+S: Settings)".to_string(),
             is_loading: false,
             settings_cursor: 0,
+            current_download: None,
         }
     }
 
@@ -84,6 +98,7 @@ mod tests {
         let app = App::new();
         assert_eq!(app.current_view, ActiveView::Search);
         assert!(app.search_query.is_empty());
+        assert!(app.current_download.is_none());
     }
 
     #[test]
