@@ -14,9 +14,22 @@ impl Default for Language {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProviderType {
+    VoirAnime,
+    AnimeSama,
+}
+
+impl Default for ProviderType {
+    fn default() -> Self {
+        ProviderType::VoirAnime
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     pub default_language: Language,
+    pub provider: ProviderType,
     pub preferred_players: Vec<String>,
 }
 
@@ -24,6 +37,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             default_language: Language::VOSTFR,
+            provider: ProviderType::VoirAnime,
             preferred_players: vec![
                 "Stape".to_string(),
                 "myTV".to_string(),
@@ -82,6 +96,7 @@ mod tests {
     fn test_config_serialization() {
         let config = Config {
             default_language: Language::VF,
+            provider: ProviderType::AnimeSama,
             preferred_players: vec!["VOE".to_string(), "MOON".to_string()],
         };
 

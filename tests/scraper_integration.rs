@@ -1,9 +1,10 @@
-use anime_dl_rs::scraper::Scraper;
+use anime_dl_rs::providers::voir_anime::VoirAnime;
+use anime_dl_rs::providers::anime_sama::AnimeSama;
 use anime_dl_rs::downloader::Downloader;
 
 #[tokio::test]
 async fn test_live_search_voir_anime() {
-    let scraper = Scraper::new();
+    let scraper = VoirAnime::new();
     match scraper.search("One Piece").await {
         Ok(results) => {
             println!("Live search returned {} results.", results.len());
@@ -16,8 +17,21 @@ async fn test_live_search_voir_anime() {
 }
 
 #[tokio::test]
+async fn test_live_search_anime_sama() {
+    let provider = AnimeSama::new();
+    match provider.search("One Piece").await {
+        Ok(results) => {
+            println!("Anime-Sama live search returned {} results.", results.len());
+        }
+        Err(e) => {
+            eprintln!("Anime-Sama live search network error (skipped): {}", e);
+        }
+    }
+}
+
+#[tokio::test]
 async fn test_live_get_episodes() {
-    let scraper = Scraper::new();
+    let scraper = VoirAnime::new();
     // Using a stable anime URL on voir-anime.to
     let anime_url = "https://voir-anime.to/anime/mission-yozakura-family-2/";
     match scraper.get_episodes(anime_url).await {
@@ -36,7 +50,7 @@ async fn test_live_get_episodes() {
 
 #[tokio::test]
 async fn test_live_player_iframe_extraction() {
-    let scraper = Scraper::new();
+    let scraper = VoirAnime::new();
     // Using a known episode URL
     let episode_url = "https://voir-anime.to/anime/mission-yozakura-family-2/mission-yozakura-family-2-17-vostfr/";
     let preferred = vec!["Stape".to_string(), "myTV".to_string(), "VOE".to_string(), "MOON".to_string()];

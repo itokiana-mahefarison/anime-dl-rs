@@ -1,12 +1,11 @@
 use anime_dl_rs::app::{ActiveView, App};
 use anime_dl_rs::config;
 use anime_dl_rs::downloader::Downloader;
-use anime_dl_rs::scraper::Scraper;
 use anime_dl_rs::ui;
 
 use clap::Parser;
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -15,7 +14,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{io, time::Duration};
 
 #[derive(Parser, Debug)]
-#[command(name = "anime-dl-rs", author, version, about = "High-performance Anime Downloader for voir-anime.to")]
+#[command(name = "anime-dl-rs", author, version, about = "High-performance Anime Downloader for voir-anime & anime-sama")]
 struct Args {
     #[arg(short, long)]
     url: Option<String>,
@@ -27,25 +26,25 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    let app_temp = App::new();
+    let provider = app_temp.get_active_provider();
 
     // If direct URL is provided via CLI
     if let Some(url) = args.url {
-        println!("Starting direct download mode for URL: {}", url);
-        let scraper = Scraper::new();
+        println!("Starting direct download mode with provider [{}] for URL: {}", provider.name(), url);
         let downloader = Downloader::new(args.output);
 
         println!("Fetching episodes...");
-        let episodes = scraper.get_episodes(&url).await?;
+        let episodes = provider.get_episodes(&url).await?;
         println!("Found {} episodes.", episodes.len());
 
         for ep in episodes {
             println!("Processing Episode {}: {}", ep.number, ep.title);
-            match scraper.get_player_iframe(&ep.url, &["Stape".to_string(), "myTV".to_string(), "MOON".to_string(), "VOE".to_string()]).await {
+            match provider.get_player_iframe(&ep.url, &app_temp.config.preferred_players).await {
                 Ok(iframe) => {
-                    println!("Found iframe: {}", iframe);
-                    match scraper.resolve_video_url(&iframe).await {
+                    match provider.resolve_video_url(&iframe).await {
                         Ok(video_url) => {
-                            println!("Resolved direct video URL: {}", video_url);
+                            println!("Resolved video URL: {}", video_url);
                             let pb = ProgressBar::new(0);
                             if let Err(e) = downloader.download_episode(&video_url, ep.number, pb).await {
                                 eprintln!("Failed to download episode {}: {}", ep.number, e);
@@ -68,9 +67,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new();
-    let scraper = Scraper::new();
 
-    let res = run_tui(&mut terminal, &mut app, &scraper).await;
+    let res = run_tui(&mut terminal, &mut app).await;
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -86,13 +84,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn run_tui<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
-    scraper: &Scraper,
 ) -> io::Result<()> {
+    let downloader = Downloader::new("./downloads".to_string());
+
     loop {
         terminal.draw(|f| ui::draw(f, app))?;
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
+                // Global shortcut Ctrl + P to toggle provider
+                if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('p') {
+                    app.toggle_provider();
+                    let prov = app.get_active_provider();
+                    app.status_message = format!("Switched provider to: [{}]", prov.name());
+                    app.search_results.clear();
+                    continue;
+                }
+
+                let provider = app.get_active_provider();
+
                 match app.current_view {
                     ActiveView::Settings => match key.code {
                         KeyCode::Esc | KeyCode::Char('s') => {
@@ -142,10 +152,26 @@ async fn run_tui<B: ratatui::backend::Backend>(
                             app.search_query.pop();
                         }
                         KeyCode::Enter => {
-                            if !app.search_query.is_empty() {
-                                app.status_message = format!("Searching for '{}'...", app.search_query);
-                                if let Ok(results) = scraper.search(&app.search_query).await {
+                            if !app.search_results.is_empty() {
+                                // Select anime and fetch episodes
+                                let selected_anime = &app.search_results[app.selected_anime_index];
+                                app.status_message = format!("Fetching episodes for '{}'...", selected_anime.title);
+                                terminal.draw(|f| ui::draw(f, app))?;
+
+                                if let Ok(eps) = provider.get_episodes(&selected_anime.url).await {
+                                    app.episodes = eps;
+                                    app.selected_episode_index = 0;
+                                    app.current_view = ActiveView::Episodes;
+                                    app.status_message = format!("Found {} episodes. Press Enter on an episode to download.", app.episodes.len());
+                                } else {
+                                    app.status_message = "Failed to fetch episodes.".to_string();
+                                }
+                            } else if !app.search_query.is_empty() {
+                                app.status_message = format!("[{}] Searching for '{}'...", provider.name(), app.search_query);
+                                terminal.draw(|f| ui::draw(f, app))?;
+                                if let Ok(results) = provider.search(&app.search_query).await {
                                     app.search_results = results;
+                                    app.selected_anime_index = 0;
                                     app.status_message = format!("Found {} results.", app.search_results.len());
                                 } else {
                                     app.status_message = "Search failed.".to_string();
@@ -167,7 +193,53 @@ async fn run_tui<B: ratatui::backend::Backend>(
                         }
                         _ => {}
                     },
-                    ActiveView::AnimeList | ActiveView::Episodes => {
+                    ActiveView::Episodes => match key.code {
+                        KeyCode::Esc => {
+                            app.current_view = ActiveView::Search;
+                        }
+                        KeyCode::Up => {
+                            if app.selected_episode_index > 0 {
+                                app.selected_episode_index -= 1;
+                            }
+                        }
+                        KeyCode::Down => {
+                            if !app.episodes.is_empty() && app.selected_episode_index < app.episodes.len() - 1 {
+                                app.selected_episode_index += 1;
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if !app.episodes.is_empty() {
+                                let ep = &app.episodes[app.selected_episode_index];
+                                app.status_message = format!("Resolving episode {}: {}...", ep.number, ep.title);
+                                terminal.draw(|f| ui::draw(f, app))?;
+
+                                match provider.get_player_iframe(&ep.url, &app.config.preferred_players).await {
+                                    Ok(iframe) => {
+                                        match provider.resolve_video_url(&iframe).await {
+                                            Ok(video_url) => {
+                                                app.status_message = format!("Downloading episode {}...", ep.number);
+                                                terminal.draw(|f| ui::draw(f, app))?;
+                                                let pb = ProgressBar::new(0);
+                                                if let Err(e) = downloader.download_episode(&video_url, ep.number, pb).await {
+                                                    app.status_message = format!("Download failed: {}", e);
+                                                } else {
+                                                    app.status_message = format!("Episode {} downloaded successfully!", ep.number);
+                                                }
+                                            }
+                                            Err(e) => {
+                                                app.status_message = format!("Failed to resolve stream: {}", e);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        app.status_message = format!("Failed to find player: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    },
+                    ActiveView::AnimeList => {
                         if key.code == KeyCode::Esc {
                             app.current_view = ActiveView::Search;
                         }
