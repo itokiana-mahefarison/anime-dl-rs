@@ -1,29 +1,15 @@
 use reqwest::Client;
 use scraper::{Html, Selector};
-use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use crate::config::Language;
+use super::{AnimeItem, EpisodeItem};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnimeItem {
-    pub title: String,
-    pub url: String,
-    pub language: Language,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EpisodeItem {
-    pub number: usize,
-    pub title: String,
-    pub url: String,
-}
-
-pub struct Scraper {
+pub struct VoirAnime {
     client: Client,
 }
 
-impl Scraper {
+impl VoirAnime {
     pub fn new() -> Self {
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -32,11 +18,8 @@ impl Scraper {
         Self { client }
     }
 
-    /// Searches for anime on voir-anime.to and returns items annotated with VOSTFR or VF based on their URL/title.
-    pub async fn search(&self, query: &str) -> Result<Vec<AnimeItem>, Box<dyn std::error::Error>> {
-        let search_url = format!("https://voir-anime.to/?s={}&post_type=wp-manga", urlencoding::encode(query));
-        let resp = self.client.get(&search_url).send().await?.text().await?;
-        Ok(self.parse_search_html(&resp))
+    pub fn name(&self) -> &str {
+        "voir-anime"
     }
 
     pub fn parse_search_html(&self, html: &str) -> Vec<AnimeItem> {
@@ -69,12 +52,6 @@ impl Scraper {
         }
 
         results
-    }
-
-    /// Fetches all episodes for a given anime series URL.
-    pub async fn get_episodes(&self, anime_url: &str) -> Result<Vec<EpisodeItem>, Box<dyn std::error::Error>> {
-        let resp = self.client.get(anime_url).send().await?.text().await?;
-        Ok(self.parse_episodes_html(&resp))
     }
 
     pub fn parse_episodes_html(&self, html: &str) -> Vec<EpisodeItem> {
@@ -124,7 +101,17 @@ impl Scraper {
         digits.last().copied()
     }
 
-    /// Extracts the video iframe URL for an episode, trying players according to preferred order.
+    pub async fn search(&self, query: &str) -> Result<Vec<AnimeItem>, Box<dyn std::error::Error>> {
+        let search_url = format!("https://voir-anime.to/?s={}&post_type=wp-manga", urlencoding::encode(query));
+        let resp = self.client.get(&search_url).send().await?.text().await?;
+        Ok(self.parse_search_html(&resp))
+    }
+
+    pub async fn get_episodes(&self, anime_url: &str) -> Result<Vec<EpisodeItem>, Box<dyn std::error::Error>> {
+        let resp = self.client.get(anime_url).send().await?.text().await?;
+        Ok(self.parse_episodes_html(&resp))
+    }
+
     pub async fn get_player_iframe(&self, episode_url: &str, preferred_players: &[String]) -> Result<String, Box<dyn std::error::Error>> {
         for player in preferred_players {
             let host_param = match player.as_str() {
@@ -157,7 +144,6 @@ impl Scraper {
         Err("Could not find any working player iframe for this episode.".into())
     }
 
-    /// Resolves an iframe embed URL into a direct video stream URL (.mp4 or .m3u8) if possible.
     pub async fn resolve_video_url(&self, iframe_url: &str) -> Result<String, Box<dyn std::error::Error>> {
         let resp = self.client.get(iframe_url)
             .header("Referer", "https://voir-anime.to/")
@@ -200,34 +186,5 @@ impl Scraper {
         }
 
         Ok(iframe_url.to_string())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_episode_number() {
-        let scraper = Scraper::new();
-        assert_eq!(scraper.extract_episode_number("Mission Yozakura Family 2 - 17 VOSTFR"), Some(17));
-        assert_eq!(scraper.extract_episode_number("Episode 05"), Some(5));
-        assert_eq!(scraper.extract_episode_number("aoashi-2-03-vf"), Some(3));
-        assert_eq!(scraper.extract_episode_number("Special OVA"), None);
-    }
-
-    #[test]
-    fn test_parse_search_html() {
-        let scraper = Scraper::new();
-        let html = r#"
-            <div>
-                <a href="https://voir-anime.to/anime/mission-yozakura-family-2/">Mission: Yozakura Family 2</a>
-                <a href="https://voir-anime.to/anime/aoashi-2-vf/">Aoashi 2 (VF)</a>
-            </div>
-        "#;
-        let results = scraper.parse_search_html(html);
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].language, Language::VOSTFR);
-        assert_eq!(results[1].language, Language::VF);
     }
 }

@@ -1,5 +1,5 @@
-use crate::config::Config;
-use crate::scraper::{AnimeItem, EpisodeItem};
+use crate::config::{Config, ProviderType};
+use crate::providers::{AnimeItem, EpisodeItem, ProviderEnum};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveView {
@@ -35,10 +35,22 @@ impl App {
             selected_anime_index: 0,
             episodes: Vec::new(),
             selected_episode_index: 0,
-            status_message: "Type your search query and press Enter.".to_string(),
+            status_message: "Type your search query and press Enter. (Press Ctrl+P to toggle Provider)".to_string(),
             is_loading: false,
             settings_cursor: 0,
         }
+    }
+
+    pub fn get_active_provider(&self) -> ProviderEnum {
+        ProviderEnum::new(self.config.provider)
+    }
+
+    pub fn toggle_provider(&mut self) {
+        self.config.provider = match self.config.provider {
+            ProviderType::VoirAnime => ProviderType::AnimeSama,
+            ProviderType::AnimeSama => ProviderType::VoirAnime,
+        };
+        let _ = self.config.save();
     }
 
     pub fn toggle_settings(&mut self) {
@@ -84,6 +96,16 @@ mod tests {
 
         app.toggle_settings();
         assert_eq!(app.current_view, ActiveView::Search);
+    }
+
+    #[test]
+    fn test_toggle_provider() {
+        let mut app = App::new();
+        let initial = app.config.provider;
+        app.toggle_provider();
+        assert_ne!(app.config.provider, initial);
+        app.toggle_provider();
+        assert_eq!(app.config.provider, initial);
     }
 
     #[test]

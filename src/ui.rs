@@ -19,9 +19,14 @@ pub fn draw(f: &mut Frame, app: &App) {
         .split(f.size());
 
     // Title / Header
+    let provider_name = match app.config.provider {
+        crate::config::ProviderType::VoirAnime => "voir-anime",
+        crate::config::ProviderType::AnimeSama => "anime-sama",
+    };
+
     let header = Paragraph::new(Line::from(vec![
         Span::styled(" Anime-DL-RS ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::raw("| Type /settings or press 's' for settings"),
+        Span::raw(format!("| Provider: [{}] (Ctrl+P to toggle) | 's' for settings", provider_name)),
     ]))
     .block(Block::default().borders(Borders::ALL).title("Navigation"));
     f.render_widget(header, chunks[0]);
@@ -105,7 +110,7 @@ fn draw_settings_modal(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title("Settings (/settings) - Use Up/Down & Space/Enter")
+        .title("Settings - Use Up/Down & Space/Enter")
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::DarkGray));
     f.render_widget(block, popup_area);
@@ -120,9 +125,13 @@ fn draw_settings_modal(f: &mut Frame, app: &App, area: Rect) {
         .margin(2)
         .split(popup_area);
 
-    let lang_text = format!("Default Language: {:?} (Press 'l' to toggle)", app.config.default_language);
-    let lang_para = Paragraph::new(lang_text).block(Block::default().borders(Borders::ALL));
-    f.render_widget(lang_para, chunks[0]);
+    let provider_name = match app.config.provider {
+        crate::config::ProviderType::VoirAnime => "voir-anime",
+        crate::config::ProviderType::AnimeSama => "anime-sama",
+    };
+    let prov_text = format!("Provider: {} (Ctrl+P to toggle)", provider_name);
+    let prov_para = Paragraph::new(prov_text).block(Block::default().borders(Borders::ALL));
+    f.render_widget(prov_para, chunks[0]);
 
     let players: Vec<ListItem> = app
         .config
@@ -141,7 +150,7 @@ fn draw_settings_modal(f: &mut Frame, app: &App, area: Rect) {
         .style(Style::default().fg(Color::White));
     f.render_widget(players_list, chunks[1]);
 
-    let footer = Paragraph::new("Press Esc or /settings to close");
+    let footer = Paragraph::new("Press Esc or 's' to close");
     f.render_widget(footer, chunks[2]);
 }
 
