@@ -45,10 +45,16 @@ fn parse_range(range_str: &str) -> Option<(usize, usize)> {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
     let app_temp = App::new();
-    let provider = app_temp.get_active_provider();
 
     // If direct URL is provided via CLI
     if let Some(url) = args.url {
+        let provider = if url.contains("anime-sama") {
+            ProviderEnum::new(config::ProviderType::AnimeSama)
+        } else if url.contains("voir-anime") {
+            ProviderEnum::new(config::ProviderType::VoirAnime)
+        } else {
+            app_temp.get_active_provider()
+        };
         println!("Starting direct download mode with provider [{}] for URL: {}", provider.name(), url);
         let downloader = Downloader::new(args.output);
 

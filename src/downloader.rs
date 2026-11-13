@@ -55,13 +55,19 @@ impl Downloader {
         let output_template = format!("{}/episode_{:02}.%(ext)s", self.output_dir, ep_num);
         let final_filename = format!("{}/episode_{:02}.mp4", self.output_dir, ep_num);
 
-        let status = Command::new("yt-dlp")
-            .arg("-o")
+        let mut cmd = Command::new("yt-dlp");
+        cmd.arg("-o")
             .arg(&output_template)
-            .arg("--no-playlist")
-            .arg(target_url)
-            .status()
-            .await;
+            .arg("--no-playlist");
+
+        if target_url.contains("voir-anime") {
+            cmd.arg("--referer").arg("https://voir-anime.to/");
+        } else if target_url.contains("anime-sama") || target_url.contains("ansembed") {
+            cmd.arg("--referer").arg("https://anime-sama.to/");
+        }
+
+        cmd.arg(target_url);
+        let status = cmd.status().await;
 
         match status {
             Ok(s) if s.success() => Ok(final_filename),
