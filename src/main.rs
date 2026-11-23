@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(url) = args.url {
         let provider_type = if url.contains("anime-sama") {
             config::ProviderType::AnimeSama
-        } else if url.contains("voir-anime") {
+        } else if url.contains("voir-anime") || url.contains("voiranime") {
             config::ProviderType::VoirAnime
         } else {
             app_temp.config.provider

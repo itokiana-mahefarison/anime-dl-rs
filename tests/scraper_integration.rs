@@ -52,8 +52,8 @@ async fn test_live_get_seasons_anime_sama() {
 #[tokio::test]
 async fn test_live_get_episodes() {
     let scraper = VoirAnime::new();
-    // Using a stable anime URL on voir-anime.to
-    let anime_url = "https://voir-anime.to/anime/mission-yozakura-family-2/";
+    // Using a stable anime URL on voiranime.cx
+    let anime_url = "https://voiranime.cx/anime/mission-yozakura-family-2/";
     match scraper.get_episodes(anime_url).await {
         Ok(episodes) => {
             println!("Fetched {} episodes for Mission Yozakura Family 2", episodes.len());
@@ -72,7 +72,7 @@ async fn test_live_get_episodes() {
 async fn test_live_player_iframe_extraction() {
     let scraper = VoirAnime::new();
     // Using a known episode URL
-    let episode_url = "https://voir-anime.to/anime/mission-yozakura-family-2/mission-yozakura-family-2-17-vostfr/";
+    let episode_url = "https://voiranime.cx/anime/mission-yozakura-family-2/mission-yozakura-family-2-17-vostfr/";
     let preferred = vec!["Stape".to_string(), "myTV".to_string(), "VOE".to_string(), "MOON".to_string()];
     
     match scraper.get_player_iframe(episode_url, &preferred).await {

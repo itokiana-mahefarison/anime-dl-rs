@@ -6,8 +6,8 @@ This document serves as the persistent memory and technical briefing for AI agen
 
 ## 1. Project Overview
 - **Name:** `anime-dl-rs`
-- **Description:** A high-performance, asynchronous Rust anime downloader and Terminal User Interface (TUI) client for **voir-anime.to** and **anime-sama.to**, built following Test-Driven Development (TDD) principles.
-- **Target Sites:** `voir-anime.to` (WordPress / Madara theme) and `anime-sama.to` (single-page season structure with Vidmoly/Uqload/VOE).
+- **Description:** A high-performance, asynchronous Rust anime downloader and Terminal User Interface (TUI) client for **voiranime.cx** and **anime-sama.to**, built following Test-Driven Development (TDD) principles.
+- **Target Sites:** `voiranime.cx` (WordPress / Madara theme) and `anime-sama.to` (single-page season structure with Vidmoly/Uqload/VOE).
 - **Key Features:**
   - Multi-provider support (`voir-anime` and `anime-sama` switchable via `Ctrl+P`).
   - Dual search mode (Global platform search & Direct URL mode).
@@ -37,7 +37,7 @@ projects/anime-dl-rs/
 │   ├── downloader.rs        # yt-dlp wrapper & async HTTP Range downloader with MPSC progress
 │   └── providers/
 │       ├── mod.rs           # ProviderEnum abstraction (AnimeItem, EpisodeItem)
-│       ├── voir_anime.rs    # voir-anime.to HTML scraper and stream resolver
+│       ├── voir_anime.rs    # voiranime.cx HTML scraper and stream resolver
 │       └── anime_sama.rs    # anime-sama.to season parser and embed resolver
 └── tests/
     └── scraper_integration.rs # Live integration tests (search, episodes, iframes, stream resolution)
@@ -67,7 +67,7 @@ cargo run
 
 ### Run CLI Direct Download Mode
 ```bash
-cargo run -- --url "https://voir-anime.to/anime/mission-yozakura-family-2/" --output "./downloads" --range 1-5
+cargo run -- --url "https://voiranime.cx/anime/mission-yozakura-family-2/" --output "./downloads" --range 1-5
 ```
 
 ### Run Test Suite

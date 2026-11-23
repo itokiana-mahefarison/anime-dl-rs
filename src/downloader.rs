@@ -74,8 +74,8 @@ impl Downloader {
                 .arg("download:YTPROG|||%(progress.downloaded_bytes)s|||%(progress.total_bytes_estimate)s|||%(progress._percent_str)s|||%(progress._speed_str)s|||%(progress._eta_str)s");
         }
 
-        if target_url.contains("voir-anime") {
-            cmd.arg("--referer").arg("https://voir-anime.to/");
+        if target_url.contains("voir-anime") || target_url.contains("voiranime") {
+            cmd.arg("--referer").arg("https://voiranime.cx/");
         } else if target_url.contains("anime-sama") || target_url.contains("ansembed") {
             cmd.arg("--referer").arg("https://anime-sama.to/");
         } else if target_url.contains("/embed") && target_url.contains("uqload") {

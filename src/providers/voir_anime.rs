@@ -102,7 +102,7 @@ impl VoirAnime {
     }
 
     pub async fn search(&self, query: &str) -> Result<Vec<AnimeItem>, Box<dyn std::error::Error + Send + Sync>> {
-        let search_url = format!("https://voir-anime.to/?s={}&post_type=wp-manga", urlencoding::encode(query));
+        let search_url = format!("https://voiranime.cx/?s={}&post_type=wp-manga", urlencoding::encode(query));
         let resp = self.client.get(&search_url).send().await?.text().await?;
         Ok(self.parse_search_html(&resp))
     }
@@ -164,7 +164,7 @@ impl VoirAnime {
 
     pub async fn resolve_video_url(&self, iframe_url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let resp = self.client.get(iframe_url)
-            .header("Referer", "https://voir-anime.to/")
+            .header("Referer", "https://voiranime.cx/")
             .send().await?.text().await?;
 
         let document = Html::parse_document(&resp);

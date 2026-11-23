@@ -273,7 +273,7 @@ fn draw_welcome_card(f: &mut Frame, app: &App, area: Rect) {
         .split(chunks[1]);
 
     let provider_name = match app.config.provider {
-        crate::config::ProviderType::VoirAnime => "voir-anime.to (WordPress)",
+        crate::config::ProviderType::VoirAnime => "voiranime.cx (WordPress)",
         crate::config::ProviderType::AnimeSama => "anime-sama.to (Single-Page SPA)",
     };
 

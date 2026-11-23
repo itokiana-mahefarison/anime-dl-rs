@@ -58,7 +58,7 @@
 
 | Feature | Description |
 | :--- | :--- |
-| **Modular Multi-Provider** | Native support for **Voir-Anime** (`voir-anime.to`) and **Anime-Sama** (`anime-sama.to`). Seamlessly switch between sources on the fly. |
+| **Modular Multi-Provider** | Native support for **VoirAnime** (`voiranime.cx`) and **Anime-Sama** (`anime-sama.to`). Seamlessly switch between sources on the fly. |
 | **Binsider-Inspired TUI** | Beautiful rounded cards, tabbed views, search prompt cursor, real-time metadata inspector, and status pills. |
 | **Non-blocking Downloads** | Zero GUI freezes. Background tasks stream progress via `tokio::mpsc` channels directly into an in-terminal gauge. |
 | **Universal Video Backend** | Deep integration with **`yt-dlp`** to bypass third-party player protections across all major embed hosts. |
@@ -151,7 +151,7 @@ Prefer scriptable or headless downloads? Use CLI direct download mode:
 
 ```bash
 # Download from Voir-Anime
-cargo run --release -- --url "https://voir-anime.to/anime/mission-yozakura-family-2/"
+cargo run --release -- --url "https://voiranime.cx/anime/mission-yozakura-family-2/"
 
 # Download from Anime-Sama
 cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vostfr/"
@@ -179,7 +179,7 @@ cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vos
 ## 🌐 Supported Providers & Players
 
 ### Providers
-- **Voir-Anime** (`voir-anime.to`) — Multi-page WordPress / wp-manga scraper with automatic language variant detection.
+- **VoirAnime** (`voiranime.cx`) — Multi-page WordPress / wp-manga scraper with automatic language variant detection.
 - **Anime-Sama** (`anime-sama.to`) — Single-Page season scraper with direct player embed extraction.
 
 ### Video Players & Embeds

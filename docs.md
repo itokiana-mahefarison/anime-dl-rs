@@ -1,6 +1,6 @@
 # User Documentation - anime-dl-rs
 
-Welcome to the user guide for **anime-dl-rs**, an interactive TUI and CLI anime downloader supporting **voir-anime.to** and **anime-sama.to**, featuring universal **yt-dlp** integration.
+Welcome to the user guide for **anime-dl-rs**, an interactive TUI and CLI anime downloader supporting **voiranime.cx** and **anime-sama.to**, featuring universal **yt-dlp** integration.
 
 ---
 
@@ -58,7 +58,7 @@ cargo run --release
 Download directly via command line by providing an anime URL:
 ```bash
 # Download all episodes
-cargo run --release -- --url "https://voir-anime.to/anime/mission-yozakura-family-2/" --output "./downloads"
+cargo run --release -- --url "https://voiranime.cx/anime/mission-yozakura-family-2/" --output "./downloads"
 
 # Download with episode range (e.g. 1 to 5)
 cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vostfr/" --output "./downloads" --range 1-5
