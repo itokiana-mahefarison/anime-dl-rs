@@ -70,9 +70,9 @@
 
 ## 🚀 Quick Start
 
-### ⚡ 1. One-Liner Instant Installation (No git clone required)
+### ⚡ 1. One-Liner Instant Installation (Pre-compiled Binaries)
 
-Install and setup `anime-dl-rs` automatically in seconds:
+Install and setup `anime-dl-rs` in seconds without needing Rust, Cargo, or Git:
 
 #### Linux & macOS:
 ```bash
@@ -84,19 +84,26 @@ curl -fsSL https://raw.githubusercontent.com/itokiana/anime-dl-rs/master/install
 irm https://raw.githubusercontent.com/itokiana/anime-dl-rs/master/install.ps1 | iex
 ```
 
-#### Via Cargo (Cross-Platform):
+> [!TIP]
+> The installer automatically fetches the latest pre-compiled static binary from [GitHub Releases](https://github.com/itokiana/anime-dl-rs/releases).
+
+#### Via Cargo (for Rust developers):
 ```bash
 cargo install --git https://github.com/itokiana/anime-dl-rs.git
 ```
 
 ---
 
-### 📦 2. Prerequisites & Manual Build
+### 📦 2. Runtime Dependencies & Manual Build
 
-Ensure you have the following tools available in your `PATH`:
-- **Rust toolchain** (1.75+ recommended): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **yt-dlp**: `sudo apt install yt-dlp` or `pip install yt-dlp`
-- **FFmpeg**: `sudo apt install ffmpeg`
+#### Runtime Dependencies
+To extract streams and merge formats, ensure you have:
+- **yt-dlp**: `sudo apt install yt-dlp` (Linux) or `winget install yt-dlp` (Windows)
+- **FFmpeg**: `sudo apt install ffmpeg` (Linux) or `winget install Gyan.FFmpeg` (Windows)
+
+#### Building from Source (Optional)
+If you prefer building locally:
+- **Rust toolchain** (1.75+): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 
 ```bash
 git clone https://github.com/itokiana/anime-dl-rs.git
@@ -190,16 +197,26 @@ cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vos
 Your preferences are persistently saved in standard JSON at:
 `~/.config/anime-dl/config.json`
 
+Player priority is configured independently per provider:
+
 ```json
 {
   "default_language": "VOSTFR",
   "provider": "AnimeSama",
-  "preferred_players": [
+  "voir_anime_players": [
+    "Stape",
+    "myTV",
+    "MOON",
+    "VOE"
+  ],
+  "anime_sama_players": [
     "Vidmoly",
     "VOE",
     "Uqload",
-    "Stape",
-    "myTV"
+    "Sendvid",
+    "Sibnet",
+    "OneUpload",
+    "Streamtape"
   ]
 }
 ```

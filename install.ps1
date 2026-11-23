@@ -5,8 +5,9 @@
 
 $ErrorActionPreference = "Stop"
 
-$RepoUrl = if ($env:REPO_URL) { $env:REPO_URL } else { "https://github.com/itokiana/anime-dl-rs.git" }
+$Repo = if ($env:REPO) { $env:REPO } else { "itokiana/anime-dl-rs" }
 $AppName = "anime-dl-rs"
+$Version = if ($env:VERSION) { $env:VERSION } else { "latest" }
 
 Write-Host @"
                _                     _ _                
@@ -17,20 +18,7 @@ Write-Host @"
 
 Write-Host "`nInstalling $AppName for Windows...`n" -ForegroundColor White
 
-# 1. Check for Cargo / Rust
-if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-    Write-Host "● Cargo/Rust is not detected on your system." -ForegroundColor Yellow
-    Write-Host "Installing Rust via winget / rustup..." -ForegroundColor Cyan
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        winget install Rustlang.Rustup -e --silent
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","User") + ";" + [System.Environment]::GetEnvironmentVariable("Path","Machine")
-    } else {
-        Write-Host "Please install Rust from https://rustup.rs/ and re-run this script." -ForegroundColor Red
-        exit 1
-    }
-}
-
-# 2. Check for yt-dlp & ffmpeg
+# 1. Check for yt-dlp & ffmpeg (runtime dependencies)
 if (-not (Get-Command yt-dlp -ErrorAction SilentlyContinue)) {
     Write-Host "⚠ Warning: 'yt-dlp' was not found in your PATH." -ForegroundColor Yellow
     Write-Host "  You can install it easily via winget:`n  winget install yt-dlp`n" -ForegroundColor DarkGray
@@ -41,38 +29,57 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     Write-Host "  You can install it easily via winget:`n  winget install Gyan.FFmpeg`n" -ForegroundColor DarkGray
 }
 
-# 3. Determine Installation Target Directory
+# 2. Determine Installation Target Directory
 $InstallDir = "$env:USERPROFILE\.local\bin"
 if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
 
-# 4. Clone and Build
-$TmpDir = Join-Path $env:TEMP ("anime-dl-build-" + [System.Guid]::NewGuid().ToString().Substring(0,8))
-Write-Host "● Cloning repository into temporary workspace..." -ForegroundColor Cyan
-git clone --depth 1 $RepoUrl $TmpDir | Out-Null
+# 3. Download and Install Pre-compiled Binary
+$AssetName = "$AppName-windows-x86_64.zip"
+$DownloadUrl = if ($Version -eq "latest") {
+    "https://github.com/$Repo/releases/latest/download/$AssetName"
+} else {
+    "https://github.com/$Repo/releases/download/$Version/$AssetName"
+}
 
-Write-Host "● Compiling $AppName (release build with Cargo)..." -ForegroundColor Cyan
-Push-Location $TmpDir
+Write-Host "● Downloading $AssetName from GitHub Releases..." -ForegroundColor Cyan
+Write-Host "  URL: $DownloadUrl" -ForegroundColor DarkGray
+
+$TmpZip = Join-Path $env:TEMP ("$AppName-" + [System.Guid]::NewGuid().ToString().Substring(0,8) + ".zip")
+$TmpExtract = Join-Path $env:TEMP ("$AppName-extract-" + [System.Guid]::NewGuid().ToString().Substring(0,8))
+
 try {
-    cargo build --release
-} finally {
-    Pop-Location
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $TmpZip -UseBasicParsing
+    Expand-Archive -Path $TmpZip -DestinationPath $TmpExtract -Force
+    
+    $SourceBin = Join-Path $TmpExtract "$AppName.exe"
+    if (-not (Test-Path $SourceBin)) {
+        throw "Binary $AppName.exe not found in extracted archive."
+    }
+    
+    $DestBin = Join-Path $InstallDir "$AppName.exe"
+    Copy-Item -Path $SourceBin -Destination $DestBin -Force
+    Write-Host "✔ Installed $AppName.exe to $DestBin" -ForegroundColor Green
+}
+catch {
+    Write-Host "`n✖ Failed to download release asset: $_" -ForegroundColor Red
+    Write-Host "  Ensure a GitHub release exists at https://github.com/$Repo/releases" -ForegroundColor Yellow
+
+    # Fallback if Cargo is installed
+    if (Get-Command cargo -ErrorAction SilentlyContinue) {
+        Write-Host "`n● Cargo detected. Attempting fallback via 'cargo install'..." -ForegroundColor Cyan
+        cargo install --git "https://github.com/$Repo.git"
+    } else {
+        exit 1
+    }
+}
+finally {
+    if (Test-Path $TmpZip) { Remove-Item -Force $TmpZip }
+    if (Test-Path $TmpExtract) { Remove-Item -Recurse -Force $TmpExtract }
 }
 
-# 5. Move binary to installation path
-$TargetBin = Join-Path $TmpDir "target\release\$AppName.exe"
-if (-not (Test-Path $TargetBin)) {
-    Write-Host "✖ Build failed: $TargetBin not found." -ForegroundColor Red
-    Remove-Item -Recurse -Force $TmpDir
-    exit 1
-}
-
-$DestBin = Join-Path $InstallDir "$AppName.exe"
-Copy-Item -Path $TargetBin -Destination $DestBin -Force
-Remove-Item -Recurse -Force $TmpDir
-
-# 6. Ensure InstallDir is in User PATH
+# 4. Ensure InstallDir is in User PATH
 $UserPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
 if ($UserPath -notlike "*$InstallDir*") {
     Write-Host "`n● Adding $InstallDir to your User PATH..." -ForegroundColor Cyan
