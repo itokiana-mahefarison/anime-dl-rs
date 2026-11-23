@@ -1,10 +1,11 @@
 use crate::config::{Config, ProviderType};
-use crate::providers::{AnimeItem, EpisodeItem, ProviderEnum};
+use crate::providers::{AnimeItem, EpisodeItem, SeasonItem, ProviderEnum};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveView {
     Search,
     AnimeList,
+    Seasons,
     Episodes,
     Settings,
 }
@@ -28,6 +29,8 @@ pub struct App {
     pub search_query: String,
     pub search_results: Vec<AnimeItem>,
     pub selected_anime_index: usize,
+    pub seasons: Vec<SeasonItem>,
+    pub selected_season_index: usize,
     pub episodes: Vec<EpisodeItem>,
     pub selected_episode_index: usize,
     pub status_message: String,
@@ -46,6 +49,8 @@ impl App {
             search_query: String::new(),
             search_results: Vec::new(),
             selected_anime_index: 0,
+            seasons: Vec::new(),
+            selected_season_index: 0,
             episodes: Vec::new(),
             selected_episode_index: 0,
             status_message: "Type your search query and press Enter. (Ctrl+P: Provider | Ctrl+S: Settings)".to_string(),
@@ -64,6 +69,10 @@ impl App {
             ProviderType::VoirAnime => ProviderType::AnimeSama,
             ProviderType::AnimeSama => ProviderType::VoirAnime,
         };
+        let max = self.config.current_preferred_players().len().saturating_sub(1);
+        if self.settings_cursor > max {
+            self.settings_cursor = max;
+        }
         let _ = self.config.save();
     }
 
@@ -98,6 +107,7 @@ mod tests {
         let app = App::new();
         assert_eq!(app.current_view, ActiveView::Search);
         assert!(app.search_query.is_empty());
+        assert!(app.seasons.is_empty());
         assert!(app.current_download.is_none());
     }
 

@@ -13,6 +13,12 @@ pub struct AnimeItem {
     pub language: Language,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SeasonItem {
+    pub name: String,
+    pub url: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EpisodeItem {
     pub number: usize,
@@ -47,6 +53,13 @@ impl ProviderEnum {
         }
     }
 
+    pub async fn get_seasons(&self, anime_url: &str) -> Result<Vec<SeasonItem>, Box<dyn std::error::Error + Send + Sync>> {
+        match self {
+            ProviderEnum::VoirAnime(p) => p.get_seasons(anime_url).await,
+            ProviderEnum::AnimeSama(p) => p.get_seasons(anime_url).await,
+        }
+    }
+
     pub async fn get_episodes(&self, anime_url: &str) -> Result<Vec<EpisodeItem>, Box<dyn std::error::Error + Send + Sync>> {
         match self {
             ProviderEnum::VoirAnime(p) => p.get_episodes(anime_url).await,
@@ -58,6 +71,13 @@ impl ProviderEnum {
         match self {
             ProviderEnum::VoirAnime(p) => p.get_player_iframe(episode_url, preferred_players).await,
             ProviderEnum::AnimeSama(p) => p.get_player_iframe(episode_url, preferred_players).await,
+        }
+    }
+
+    pub async fn get_player_iframes(&self, episode_url: &str, preferred_players: &[String]) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        match self {
+            ProviderEnum::VoirAnime(p) => p.get_player_iframes(episode_url, preferred_players).await,
+            ProviderEnum::AnimeSama(p) => p.get_player_iframes(episode_url, preferred_players).await,
         }
     }
 

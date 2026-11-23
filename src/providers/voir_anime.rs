@@ -3,7 +3,7 @@ use scraper::{Html, Selector};
 use std::collections::HashSet;
 
 use crate::config::Language;
-use super::{AnimeItem, EpisodeItem};
+use super::{AnimeItem, EpisodeItem, SeasonItem};
 
 pub struct VoirAnime {
     client: Client,
@@ -107,15 +107,29 @@ impl VoirAnime {
         Ok(self.parse_search_html(&resp))
     }
 
+    pub async fn get_seasons(&self, anime_url: &str) -> Result<Vec<SeasonItem>, Box<dyn std::error::Error + Send + Sync>> {
+        // Voir-Anime catalogues seasons directly as distinct search results.
+        Ok(vec![SeasonItem {
+            name: "Saison 1".to_string(),
+            url: anime_url.to_string(),
+        }])
+    }
+
     pub async fn get_episodes(&self, anime_url: &str) -> Result<Vec<EpisodeItem>, Box<dyn std::error::Error + Send + Sync>> {
         let resp = self.client.get(anime_url).send().await?.text().await?;
         Ok(self.parse_episodes_html(&resp))
     }
 
     pub async fn get_player_iframe(&self, episode_url: &str, preferred_players: &[String]) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let iframes = self.get_player_iframes(episode_url, preferred_players).await?;
+        iframes.into_iter().next().ok_or_else(|| "Could not find any working player iframe for this episode.".into())
+    }
+
+    pub async fn get_player_iframes(&self, episode_url: &str, preferred_players: &[String]) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut iframes = Vec::new();
         for player in preferred_players {
             let host_param = match player.as_str() {
-                "Stape" => "host=LECTEUR%20Stape",
+                "Stape" | "Streamtape" => "host=LECTEUR%20Stape",
                 "VOE" => "host=LECTEUR%20VOE",
                 "MOON" => "host=LECTEUR%20MOON",
                 "myTV" => "host=LECTEUR%20myTV",
@@ -131,8 +145,8 @@ impl VoirAnime {
                     if let Ok(iframe_sel) = Selector::parse("#chapter-video-frame iframe, iframe") {
                         if let Some(iframe) = document.select(&iframe_sel).next() {
                             if let Some(src) = iframe.value().attr("src") {
-                                if !src.is_empty() {
-                                    return Ok(src.to_string());
+                                if !src.is_empty() && !iframes.contains(&src.to_string()) {
+                                    iframes.push(src.to_string());
                                 }
                             }
                         }
@@ -141,7 +155,11 @@ impl VoirAnime {
             }
         }
 
-        Err("Could not find any working player iframe for this episode.".into())
+        if iframes.is_empty() {
+            Err("Could not find any working player iframe for this episode.".into())
+        } else {
+            Ok(iframes)
+        }
     }
 
     pub async fn resolve_video_url(&self, iframe_url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {

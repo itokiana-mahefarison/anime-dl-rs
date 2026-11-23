@@ -48,18 +48,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // If direct URL is provided via CLI
     if let Some(url) = args.url {
-        let provider = if url.contains("anime-sama") {
-            ProviderEnum::new(config::ProviderType::AnimeSama)
+        let provider_type = if url.contains("anime-sama") {
+            config::ProviderType::AnimeSama
         } else if url.contains("voir-anime") {
-            ProviderEnum::new(config::ProviderType::VoirAnime)
+            config::ProviderType::VoirAnime
         } else {
-            app_temp.get_active_provider()
+            app_temp.config.provider
         };
+        let provider = ProviderEnum::new(provider_type);
         println!("Starting direct download mode with provider [{}] for URL: {}", provider.name(), url);
         let downloader = Downloader::new(args.output);
 
         println!("Fetching episodes...");
-        let mut episodes = provider.get_episodes(&url).await?;
+        let target_url = if url.contains("anime-sama") && !url.contains("/saison") && !url.contains("/film") && !url.contains("/oav") {
+            match provider.get_seasons(&url).await {
+                Ok(seasons) if !seasons.is_empty() => {
+                    println!("Found {} season(s) for URL. Using: {}", seasons.len(), seasons[0].name);
+                    seasons[0].url.clone()
+                }
+                _ => url.clone(),
+            }
+        } else {
+            url.clone()
+        };
+        let mut episodes = provider.get_episodes(&target_url).await?;
         println!("Found {} total episodes.", episodes.len());
 
         // Apply episode range filter if provided
@@ -72,22 +84,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
 
+        let preferred = app_temp.config.preferred_players_for(provider_type);
         for ep in episodes {
             println!("Processing Episode {}: {}", ep.number, ep.title);
-            match provider.get_player_iframe(&ep.url, &app_temp.config.preferred_players).await {
-                Ok(iframe) => {
-                    match provider.resolve_video_url(&iframe).await {
-                        Ok(video_url) => {
-                            println!("Resolved video URL: {}", video_url);
-                            let pb = ProgressBar::new(0);
-                            if let Err(e) = downloader.download_episode(&video_url, ep.number, pb).await {
-                                eprintln!("Failed to download episode {}: {}", ep.number, e);
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to resolve video stream: {}", e),
-                    }
+            let iframes = match provider.get_player_iframes(&ep.url, preferred).await {
+                Ok(list) => list,
+                Err(e) => {
+                    eprintln!("Failed to find player iframe for episode {}: {}", ep.number, e);
+                    continue;
                 }
-                Err(e) => eprintln!("Failed to find player iframe: {}", e),
+            };
+
+            let mut downloaded = false;
+            for (idx, iframe) in iframes.iter().enumerate() {
+                println!("Trying player {}/{}...", idx + 1, iframes.len());
+                match provider.resolve_video_url(iframe).await {
+                    Ok(video_url) => {
+                        println!("Resolved video URL: {}", video_url);
+                        let pb = ProgressBar::new(0);
+                        match downloader.download_episode(&video_url, ep.number, pb).await {
+                            Ok(_) => {
+                                downloaded = true;
+                                break;
+                            }
+                            Err(e) => eprintln!("Player failed: {}", e),
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to resolve video stream: {}", e),
+                }
+            }
+
+            if !downloaded {
+                eprintln!("Failed to download episode {} on all available players.", ep.number);
             }
         }
         return Ok(());
@@ -146,8 +174,10 @@ async fn run_tui<B: ratatui::backend::Backend>(
                     app.toggle_provider();
                     let prov = app.get_active_provider();
                     app.status_message = format!("Switched provider to: [{}]", prov.name());
-                    app.search_results.clear();
-                    app.current_view = ActiveView::Search;
+                    if app.current_view != ActiveView::Settings {
+                        app.search_results.clear();
+                        app.current_view = ActiveView::Search;
+                    }
                     continue;
                 }
 
@@ -164,6 +194,11 @@ async fn run_tui<B: ratatui::backend::Backend>(
                         KeyCode::Esc => {
                             app.toggle_settings();
                         }
+                        KeyCode::Char('p') => {
+                            app.toggle_provider();
+                            let prov = app.get_active_provider();
+                            app.status_message = format!("Switched provider to: [{}]", prov.name());
+                        }
                         KeyCode::Char('l') => {
                             app.config.default_language = match app.config.default_language {
                                 config::Language::VOSTFR => config::Language::VF,
@@ -175,22 +210,22 @@ async fn run_tui<B: ratatui::backend::Backend>(
                             app.move_settings_cursor_up();
                         }
                         KeyCode::Down => {
-                            let max = app.config.preferred_players.len().saturating_sub(1);
+                            let max = app.config.current_preferred_players().len().saturating_sub(1);
                             app.move_settings_cursor_down(max);
                         }
                         KeyCode::Char('+') | KeyCode::Char('=') => {
                             let i = app.settings_cursor;
                             if i > 0 {
-                                app.config.preferred_players.swap(i, i - 1);
+                                app.config.current_preferred_players_mut().swap(i, i - 1);
                                 app.settings_cursor -= 1;
                                 let _ = app.config.save();
                             }
                         }
                         KeyCode::Char('-') => {
                             let i = app.settings_cursor;
-                            let max = app.config.preferred_players.len().saturating_sub(1);
+                            let max = app.config.current_preferred_players().len().saturating_sub(1);
                             if i < max {
-                                app.config.preferred_players.swap(i, i + 1);
+                                app.config.current_preferred_players_mut().swap(i, i + 1);
                                 app.settings_cursor += 1;
                                 let _ = app.config.save();
                             }
@@ -242,11 +277,16 @@ async fn run_tui<B: ratatui::backend::Backend>(
                             app.current_view = ActiveView::Search;
                         }
                         KeyCode::Char('2') => {
+                            if !app.seasons.is_empty() {
+                                app.current_view = ActiveView::Seasons;
+                            }
+                        }
+                        KeyCode::Char('3') => {
                             if !app.episodes.is_empty() {
                                 app.current_view = ActiveView::Episodes;
                             }
                         }
-                        KeyCode::Char('3') => {
+                        KeyCode::Char('4') => {
                             app.toggle_settings();
                         }
                         KeyCode::Tab | KeyCode::Char('/') => {
@@ -267,18 +307,39 @@ async fn run_tui<B: ratatui::backend::Backend>(
                         KeyCode::Enter => {
                             if !app.search_results.is_empty() {
                                 let selected_anime = &app.search_results[app.selected_anime_index];
-                                app.status_message = format!("Fetching episodes for '{}'...", selected_anime.title);
+                                app.status_message = format!("Recherche des saisons pour '{}'...", selected_anime.title);
                                 terminal.draw(|f| ui::draw(f, app))?;
 
-                                match provider.get_episodes(&selected_anime.url).await {
-                                    Ok(eps) => {
-                                        app.episodes = eps;
-                                        app.selected_episode_index = 0;
-                                        app.current_view = ActiveView::Episodes;
-                                        app.status_message = format!("Found {} episodes. Press Enter on an episode to download.", app.episodes.len());
+                                match provider.get_seasons(&selected_anime.url).await {
+                                    Ok(seasons) => {
+                                        if seasons.len() > 1 {
+                                            app.seasons = seasons;
+                                            app.selected_season_index = 0;
+                                            app.current_view = ActiveView::Seasons;
+                                            app.status_message = format!("{} saisons trouvées. Choisissez une saison et appuyez sur Entrée.", app.seasons.len());
+                                        } else if !seasons.is_empty() {
+                                            let season_url = seasons[0].url.clone();
+                                            app.seasons = seasons;
+                                            app.selected_season_index = 0;
+                                            app.status_message = format!("Fetching episodes for '{}'...", selected_anime.title);
+                                            terminal.draw(|f| ui::draw(f, app))?;
+                                            match provider.get_episodes(&season_url).await {
+                                                Ok(eps) => {
+                                                    app.episodes = eps;
+                                                    app.selected_episode_index = 0;
+                                                    app.current_view = ActiveView::Episodes;
+                                                    app.status_message = format!("Found {} episodes. Press Enter on an episode to download.", app.episodes.len());
+                                                }
+                                                Err(e) => {
+                                                    app.status_message = format!("Failed to fetch episodes: {}", e);
+                                                }
+                                            }
+                                        } else {
+                                            app.status_message = "Aucune saison trouvée pour cet animé.".to_string();
+                                        }
                                     }
                                     Err(e) => {
-                                        app.status_message = format!("Failed to fetch episodes: {}", e);
+                                        app.status_message = format!("Failed to fetch seasons: {}", e);
                                     }
                                 }
                             }
@@ -288,18 +349,72 @@ async fn run_tui<B: ratatui::backend::Backend>(
                         }
                         _ => {}
                     },
-                    ActiveView::Episodes => match key.code {
-                        KeyCode::Char('q') => {
+                    ActiveView::Seasons => match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => {
                             app.current_view = ActiveView::AnimeList;
                         }
                         KeyCode::Char('1') => {
                             app.current_view = ActiveView::Search;
                         }
                         KeyCode::Char('3') => {
+                            if !app.episodes.is_empty() {
+                                app.current_view = ActiveView::Episodes;
+                            }
+                        }
+                        KeyCode::Char('4') => {
                             app.toggle_settings();
                         }
-                        KeyCode::Esc => {
-                            app.current_view = ActiveView::AnimeList;
+                        KeyCode::Up => {
+                            if app.selected_season_index > 0 {
+                                app.selected_season_index -= 1;
+                            }
+                        }
+                        KeyCode::Down => {
+                            if !app.seasons.is_empty() && app.selected_season_index < app.seasons.len() - 1 {
+                                app.selected_season_index += 1;
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if !app.seasons.is_empty() {
+                                let season = app.seasons[app.selected_season_index].clone();
+                                app.status_message = format!("Chargement des épisodes pour '{}'...", season.name);
+                                terminal.draw(|f| ui::draw(f, app))?;
+
+                                match provider.get_episodes(&season.url).await {
+                                    Ok(eps) => {
+                                        app.episodes = eps;
+                                        app.selected_episode_index = 0;
+                                        app.current_view = ActiveView::Episodes;
+                                        app.status_message = format!("{} épisodes trouvés pour {}. Appuyez sur Entrée pour télécharger.", app.episodes.len(), season.name);
+                                    }
+                                    Err(e) => {
+                                        app.status_message = format!("Erreur lors du chargement des épisodes: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    },
+                    ActiveView::Episodes => match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => {
+                            if app.seasons.len() > 1 {
+                                app.current_view = ActiveView::Seasons;
+                            } else {
+                                app.current_view = ActiveView::AnimeList;
+                            }
+                        }
+                        KeyCode::Char('1') => {
+                            app.current_view = ActiveView::Search;
+                        }
+                        KeyCode::Char('2') => {
+                            if !app.seasons.is_empty() {
+                                app.current_view = ActiveView::Seasons;
+                            } else {
+                                app.current_view = ActiveView::AnimeList;
+                            }
+                        }
+                        KeyCode::Char('4') => {
+                            app.toggle_settings();
                         }
                         KeyCode::Up => {
                             if app.selected_episode_index > 0 {
@@ -314,8 +429,8 @@ async fn run_tui<B: ratatui::backend::Backend>(
                         KeyCode::Enter => {
                             if !app.episodes.is_empty() {
                                 let ep = app.episodes[app.selected_episode_index].clone();
-                                let preferred = app.config.preferred_players.clone();
                                 let provider_type = app.config.provider;
+                                let preferred = app.config.preferred_players_for(provider_type).clone();
                                 let tx = download_tx.clone();
                                 let downloader = Downloader::new("./downloads".to_string());
 
@@ -323,39 +438,51 @@ async fn run_tui<B: ratatui::backend::Backend>(
 
                                 tokio::spawn(async move {
                                     let prov = ProviderEnum::new(provider_type);
-                                    match prov.get_player_iframe(&ep.url, &preferred).await {
-                                        Ok(iframe) => {
-                                            match prov.resolve_video_url(&iframe).await {
-                                                Ok(video_url) => {
-                                                    let _ = downloader.download_episode_with_progress(&video_url, ep.number, Some(tx.clone())).await;
-                                                }
-                                                Err(e) => {
-                                                    let _ = tx.send(DownloadProgress {
-                                                        ep_number: ep.number,
-                                                        title: format!("Episode {:02}", ep.number),
-                                                        downloaded_bytes: 0,
-                                                        total_bytes: 0,
-                                                        percent: 0.0,
-                                                        status: format!("Failed to resolve stream: {}", e),
-                                                        is_finished: true,
-                                                        error: Some(e.to_string()),
-                                                    }).await;
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            let _ = tx.send(DownloadProgress {
-                                                ep_number: ep.number,
-                                                title: format!("Episode {:02}", ep.number),
-                                                downloaded_bytes: 0,
-                                                total_bytes: 0,
-                                                percent: 0.0,
-                                                status: format!("Failed to find player iframe: {}", e),
-                                                is_finished: true,
-                                                error: Some(e.to_string()),
-                                            }).await;
+                                    let _ = download_episode_with_fallback(&prov, &downloader, &ep.url, ep.number, &preferred, Some(tx)).await;
+                                });
+                            }
+                        }
+                        KeyCode::Char('a') | KeyCode::Char('A') => {
+                            if !app.episodes.is_empty() {
+                                let episodes_to_download = app.episodes.clone();
+                                let provider_type = app.config.provider;
+                                let preferred = app.config.preferred_players_for(provider_type).clone();
+                                let tx = download_tx.clone();
+                                let downloader = Downloader::new("./downloads".to_string());
+                                let total = episodes_to_download.len();
+
+                                app.status_message = format!("Téléchargement de toute la liste ({} épisodes) lancé en arrière-plan...", total);
+
+                                tokio::spawn(async move {
+                                    let mut success_count = 0;
+                                    for (idx, ep) in episodes_to_download.into_iter().enumerate() {
+                                        let prov = ProviderEnum::new(provider_type);
+                                        let _ = tx.send(DownloadProgress {
+                                            ep_number: ep.number,
+                                            title: format!("Episode {:02} ({}/{})", ep.number, idx + 1, total),
+                                            downloaded_bytes: 0,
+                                            total_bytes: 0,
+                                            percent: 0.0,
+                                            status: format!("Préparation épisode {}/{} (Ep {:02})...", idx + 1, total, ep.number),
+                                            is_finished: false,
+                                            error: None,
+                                        }).await;
+
+                                        if download_episode_with_fallback(&prov, &downloader, &ep.url, ep.number, &preferred, Some(tx.clone())).await.is_ok() {
+                                            success_count += 1;
                                         }
                                     }
+
+                                    let _ = tx.send(DownloadProgress {
+                                        ep_number: 0,
+                                        title: "Batch Download".to_string(),
+                                        downloaded_bytes: 0,
+                                        total_bytes: 0,
+                                        percent: 100.0,
+                                        status: format!("Téléchargement terminé : {}/{} épisodes réussis.", success_count, total),
+                                        is_finished: true,
+                                        error: None,
+                                    }).await;
                                 });
                             }
                         }
@@ -366,6 +493,62 @@ async fn run_tui<B: ratatui::backend::Backend>(
         }
     }
     Ok(())
+}
+
+async fn download_episode_with_fallback(
+    prov: &ProviderEnum,
+    downloader: &Downloader,
+    ep_url: &str,
+    ep_num: usize,
+    preferred_players: &[String],
+    tx: Option<mpsc::Sender<DownloadProgress>>,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let iframes = prov.get_player_iframes(ep_url, preferred_players).await?;
+    let mut last_error: Box<dyn std::error::Error + Send + Sync> = "No player iframe available".into();
+
+    for (idx, iframe) in iframes.iter().enumerate() {
+        if let Some(ref sender) = tx {
+            let _ = sender.send(DownloadProgress {
+                ep_number: ep_num,
+                title: format!("Episode {:02}", ep_num),
+                downloaded_bytes: 0,
+                total_bytes: 0,
+                percent: 0.0,
+                status: format!("Essai lecteur {}/{}...", idx + 1, iframes.len()),
+                is_finished: false,
+                error: None,
+            }).await;
+        }
+
+        match prov.resolve_video_url(iframe).await {
+            Ok(video_url) => {
+                match downloader.download_episode_with_progress(&video_url, ep_num, tx.clone()).await {
+                    Ok(path) => return Ok(path),
+                    Err(e) => {
+                        last_error = e;
+                    }
+                }
+            }
+            Err(e) => {
+                last_error = e;
+            }
+        }
+    }
+
+    if let Some(ref sender) = tx {
+        let _ = sender.send(DownloadProgress {
+            ep_number: ep_num,
+            title: format!("Episode {:02}", ep_num),
+            downloaded_bytes: 0,
+            total_bytes: 0,
+            percent: 0.0,
+            status: format!("Échec sur tous les lecteurs (ep {}): {}", ep_num, last_error),
+            is_finished: true,
+            error: Some(last_error.to_string()),
+        }).await;
+    }
+
+    Err(last_error)
 }
 
 #[cfg(test)]

@@ -63,6 +63,9 @@ pub fn draw(f: &mut Frame, app: &App) {
         ActiveView::Search | ActiveView::AnimeList => {
             draw_search_view(f, app, chunks[1]);
         }
+        ActiveView::Seasons => {
+            draw_seasons_view(f, app, chunks[1]);
+        }
         ActiveView::Episodes => {
             draw_episodes_view(f, app, chunks[1]);
         }
@@ -88,11 +91,12 @@ fn draw_header_tabs(f: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Min(35), Constraint::Length(38)])
         .split(area);
 
-    let tab_titles = vec!["[1] Search", "[2] Episodes", "[3] Settings"];
+    let tab_titles = vec!["[1] Search", "[2] Seasons", "[3] Episodes", "[4] Settings"];
     let selected_tab = match app.current_view {
         ActiveView::Search | ActiveView::AnimeList => 0,
-        ActiveView::Episodes => 1,
-        ActiveView::Settings => 2,
+        ActiveView::Seasons => 1,
+        ActiveView::Episodes => 2,
+        ActiveView::Settings => 3,
     };
 
     let tabs = Tabs::new(tab_titles)
@@ -284,7 +288,7 @@ fn draw_welcome_card(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("Players    : ", Style::default().fg(Color::Cyan)),
-            Span::styled(app.config.preferred_players.join(" ➔ "), Style::default().fg(Color::LightMagenta)),
+            Span::styled(app.config.current_preferred_players().join(" ➔ "), Style::default().fg(Color::LightMagenta)),
         ]),
         Line::from(vec![
             Span::styled("Backend    : ", Style::default().fg(Color::Cyan)),
@@ -326,7 +330,7 @@ fn draw_anime_preview(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("Action    : ", Style::default().fg(Color::Cyan)),
-            Span::styled("Press Enter to fetch episodes list", Style::default().fg(Color::Green)),
+            Span::styled("Press Enter to select season / episodes", Style::default().fg(Color::Green)),
         ]),
     ];
 
@@ -339,6 +343,90 @@ fn draw_anime_preview(f: &mut Frame, app: &App, area: Rect) {
                 .title("── Anime Information ──"),
         );
     f.render_widget(preview_box, area);
+}
+
+fn draw_seasons_view(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+        .split(area);
+
+    let anime_title = if !app.search_results.is_empty() && app.selected_anime_index < app.search_results.len() {
+        &app.search_results[app.selected_anime_index].title
+    } else {
+        "Anime"
+    };
+
+    let items: Vec<ListItem> = app
+        .seasons
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let is_selected = i == app.selected_season_index;
+            let prefix = if is_selected { "▶ " } else { "  " };
+
+            let content = Line::from(vec![
+                Span::styled(prefix, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{:02} │ ", i + 1), Style::default().fg(Color::DarkGray)),
+                Span::raw(&s.name),
+            ]);
+
+            let style = if is_selected {
+                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            ListItem::new(content).style(style)
+        })
+        .collect();
+
+    let list_title = format!("── Saisons ({}) : {} ──", app.seasons.len(), anime_title);
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(list_title),
+        );
+    f.render_widget(list, chunks[0]);
+
+    if !app.seasons.is_empty() && app.selected_season_index < app.seasons.len() {
+        let season = &app.seasons[app.selected_season_index];
+        let details = vec![
+            Line::from(vec![
+                Span::styled("Anime   : ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(anime_title, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled("Saison  : ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(&season.name, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled("URL     : ", Style::default().fg(Color::Cyan)),
+                Span::styled(&season.url, Style::default().fg(Color::DarkGray)),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Action  : ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Appuyez sur [Entrée] pour charger les épisodes de cette saison", Style::default().fg(Color::Green)),
+            ]),
+            Line::from(vec![
+                Span::styled("Retour  : ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Appuyez sur [Échap] ou [q] pour revenir à la liste des animés", Style::default().fg(Color::DarkGray)),
+            ]),
+        ];
+
+        let season_box = Paragraph::new(details)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::DarkGray))
+                    .title("── Détails de la Saison ──"),
+            );
+        f.render_widget(season_box, chunks[1]);
+    }
 }
 
 fn draw_episodes_view(f: &mut Frame, app: &App, area: Rect) {
@@ -391,7 +479,7 @@ fn draw_episodes_view(f: &mut Frame, app: &App, area: Rect) {
             ]),
             Line::from(vec![
                 Span::styled("Player    : ", Style::default().fg(Color::Green)),
-                Span::styled(app.config.preferred_players.join(" > "), Style::default().fg(Color::Cyan)),
+                Span::styled(app.config.current_preferred_players().join(" > "), Style::default().fg(Color::Cyan)),
             ]),
             Line::from(vec![
                 Span::styled("File Out  : ", Style::default().fg(Color::Green)),
@@ -400,7 +488,7 @@ fn draw_episodes_view(f: &mut Frame, app: &App, area: Rect) {
             Line::from(""),
             Line::from(vec![
                 Span::styled("Instruction: ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Press [Enter] to start downloading in background", Style::default().fg(Color::Green)),
+                Span::styled("Press [Enter] to download | Press [a] to download ALL", Style::default().fg(Color::Green)),
             ]),
         ];
 
@@ -446,7 +534,7 @@ fn draw_settings_view(f: &mut Frame, app: &App, area: Rect) {
     let prov_para = Paragraph::new(Line::from(vec![
         Span::styled("Active Provider: ", Style::default().fg(Color::Cyan)),
         Span::styled(provider_name, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-        Span::styled(" (Press Ctrl+P to switch)", Style::default().fg(Color::DarkGray)),
+        Span::styled(" (Press 'p' or Ctrl+P to switch)", Style::default().fg(Color::DarkGray)),
     ]))
     .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(Color::DarkGray)));
     f.render_widget(prov_para, chunks[0]);
@@ -461,9 +549,8 @@ fn draw_settings_view(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(lang_para, chunks[1]);
 
     // Preferred players list
-    let players: Vec<ListItem> = app
-        .config
-        .preferred_players
+    let current_players = app.config.current_preferred_players();
+    let players: Vec<ListItem> = current_players
         .iter()
         .enumerate()
         .map(|(i, player)| {
@@ -482,13 +569,14 @@ fn draw_settings_view(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
+    let list_title = format!("── Player Priority: [{}] (Use +/- to reorder) ──", provider_name);
     let players_list = List::new(players)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(Color::DarkGray))
-                .title("── Player Priority (Use +/- to reorder) ──"),
+                .title(list_title),
         );
     f.render_widget(players_list, chunks[2]);
 }
@@ -519,15 +607,23 @@ fn draw_footer_keybindings(f: &mut Frame, app: &App, area: Rect) {
             key_pill("Esc", "Quit"),
         ],
         ActiveView::AnimeList => vec![
-            key_pill("Enter", "View Episodes"),
+            key_pill("Enter", "Select"),
             key_pill("Up/Down", "Navigate"),
             key_pill("Tab", "Edit Query"),
             key_pill("Ctrl+P", "Provider"),
             key_pill("Ctrl+S", "Settings"),
             key_pill("Esc", "Back"),
         ],
+        ActiveView::Seasons => vec![
+            key_pill("Enter", "Select Season"),
+            key_pill("Up/Down", "Navigate"),
+            key_pill("Ctrl+P", "Provider"),
+            key_pill("Ctrl+S", "Settings"),
+            key_pill("Esc", "Back"),
+        ],
         ActiveView::Episodes => vec![
             key_pill("Enter", "Download"),
+            key_pill("a", "Download All"),
             key_pill("Up/Down", "Navigate"),
             key_pill("Ctrl+P", "Provider"),
             key_pill("Ctrl+S", "Settings"),
@@ -536,16 +632,18 @@ fn draw_footer_keybindings(f: &mut Frame, app: &App, area: Rect) {
         ActiveView::Settings => vec![
             key_pill("Up/Down", "Select"),
             key_pill("+/-", "Reorder Player"),
+            key_pill("p", "Provider"),
             key_pill("l", "Toggle Lang"),
             key_pill("Ctrl+S/Esc", "Close"),
         ],
     };
 
+    let pills_len = pills.len();
     let mut line_spans = Vec::new();
     line_spans.push(Span::raw(" "));
     for (i, pill) in pills.into_iter().enumerate() {
         line_spans.extend(pill);
-        if i < 4 {
+        if i + 1 < pills_len {
             line_spans.push(Span::raw(" "));
         }
     }

@@ -19,12 +19,32 @@ async fn test_live_search_voir_anime() {
 #[tokio::test]
 async fn test_live_search_anime_sama() {
     let provider = AnimeSama::new();
-    match provider.search("One Piece").await {
+    match provider.search("Demon Slayer").await {
         Ok(results) => {
             println!("Anime-Sama live search returned {} results.", results.len());
+            assert!(!results.is_empty(), "Demon Slayer should return results");
+            let has_vostfr = results.iter().any(|r| r.language == anime_dl_rs::config::Language::VOSTFR);
+            let has_vf = results.iter().any(|r| r.language == anime_dl_rs::config::Language::VF);
+            assert!(has_vostfr, "Demon Slayer should have VOSTFR in search results");
+            assert!(has_vf, "Demon Slayer should have VF in search results");
         }
         Err(e) => {
             eprintln!("Anime-Sama live search network error (skipped): {}", e);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_live_get_seasons_anime_sama() {
+    let provider = AnimeSama::new();
+    let anime_url = "https://anime-sama.to/catalogue/shingeki-no-kyojin/";
+    match provider.get_seasons(anime_url).await {
+        Ok(seasons) => {
+            println!("Anime-Sama get_seasons returned {} seasons.", seasons.len());
+            assert!(!seasons.is_empty(), "Anime-Sama should return seasons");
+        }
+        Err(e) => {
+            eprintln!("Anime-Sama get_seasons network error (skipped): {}", e);
         }
     }
 }
