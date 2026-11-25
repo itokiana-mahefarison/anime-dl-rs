@@ -69,3 +69,11 @@ cargo run --release -- --url "https://anime-sama.to/catalogue/naruto/saison1/vos
 ## Configuration File
 Your settings are stored persistently at:
 `~/.config/anime-dl/config.json`
+
+---
+
+## ⚠️ Disclaimer & Educational Purpose
+
+This project was created solely for the purpose of learning and understanding how video streams and web streaming work. 
+
+The author refutes and disclaims all responsibility if any other person uses this software for dangerous or illegal purposes, such as unauthorized downloading of copyrighted content.
